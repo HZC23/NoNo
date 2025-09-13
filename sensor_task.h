@@ -2,82 +2,47 @@
 #define SENSOR_TASK_H
 
 #include <Arduino.h>
-#include "fonctions.h"
+#include "config.h"
+#include "state.h"
 
-// --- Task Scheduling ---
-const long SENSOR_TASK_INTERVAL_US = 5000; // 200 Hz
-unsigned long lastSensorTaskTime = 0;
+volatile unsigned long echo_start = 0;
+volatile unsigned long echo_end = 0;
+volatile bool echo_received = false;
 
-// --- Ultrasonic Sensor (Non-Blocking) ---
-volatile unsigned long echoStartTime = 0;
-volatile unsigned long echoEndTime = 0;
-volatile bool newEchoReceived = false;
-
-// Interrupt Service Routine for the echo pin
-// This function will be called on every change on the echo pin
-
-#ifndef IRAM_ATTR
-#define IRAM_ATTR
-#endif
-
-void IRAM_ATTR echo_isr() {
-  switch (digitalRead(ECHO)) {
-    case HIGH: // Echo pulse has started
-      echoStartTime = micros();
-      break;
-    case LOW: // Echo pulse has ended
-      echoEndTime = micros();
-      newEchoReceived = true;
-      break;
+void echo_isr() {
+  if (digitalRead(ECHO) == HIGH) {
+    echo_start = micros();
+  } else {
+    echo_end = micros();
+    echo_received = true;
   }
 }
 
-// Function to trigger a new ultrasonic reading
-void trigger_ultrasonic_read() {
-  digitalWrite(TRIGGER, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIGGER, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIGGER, LOW);
+void sensor_init() {
+  pinMode(TRIGGER, OUTPUT);
+  pinMode(ECHO, INPUT);
+  attachInterrupt(digitalPinToInterrupt(ECHO), echo_isr, CHANGE);
 }
 
-// --- Main Sensor Task ---
-// This function should be called in every loop()
-void sensor_update_task() {
-  unsigned long currentTime = micros();
+void sensor_update_task(Robot& robot) {
+  static unsigned long last_ping = 0;
+  const unsigned long PING_INTERVAL = 50; // ms
 
-  // Check if it's time to run the sensor task
-  if (currentTime - lastSensorTaskTime >= SENSOR_TASK_INTERVAL_US) {
-    lastSensorTaskTime = currentTime;
-
-    // 1. Trigger the next ultrasonic reading
-    trigger_ultrasonic_read();
-
-    // 2. Read the compass (I2C is relatively fast)
-    if (compassInitialized) {
-      compass.read();
-    }
+  if (millis() - last_ping > PING_INTERVAL) {
+    last_ping = millis();
+    digitalWrite(TRIGGER, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIGGER, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIGGER, LOW);
   }
 
-  // 3. Check if a new ultrasonic echo has been received
-  if (newEchoReceived) {
-    // Disable interrupts temporarily to safely read volatile variables
+  if (echo_received) {
     noInterrupts();
-    unsigned long duration = echoEndTime - echoStartTime;
-    newEchoReceived = false;
+    unsigned long duration = echo_end - echo_start;
+    echo_received = false;
     interrupts();
-
-    // Calculate distance in cm (0.034 / 2 = 0.017)
-    int calculated_dist = duration * 0.017;
-
-    // Update the global distance variable with a simple low-pass filter
-    // alpha = 0.7 means 70% new value, 30% old value
-    dusm = (0.7 * calculated_dist) + (0.3 * dusm);
-
-    // Clamp the value
-    if (dusm > 100) {
-        dusm = 100;
-    }
+    robot.dusm = duration / 58;
   }
 }
 
