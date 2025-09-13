@@ -1,0 +1,34 @@
+# Ignore build and output folders
+build/
+NonoApp/build/
+NonoApp/ble/build/
+NonoApp/BlunoBasicDemo/build/
+*.log
+*.tmp
+*.png
+*.jpg
+*.jpeg
+*.class
+*.apk
+*.dex
+.gradle/
+.idea/
+.vscode/
+# Arduino
+*.hex
+*.elf
+*.bin
+*.eep
+*.dmp
+*.map
+*.srec
+*.lst
+*.obj
+*.o
+*.a
+*.d
+*.pyc
+__pycache__/
+# OS files
+.DS_Store
+Thumbs.db

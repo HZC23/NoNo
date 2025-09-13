@@ -1,0 +1,42 @@
+<resources>
+
+    <!-- New Circle Button Style -->
+    <style name="Widget.App.Button.Circle" parent="Widget.Material3.Button.Icon">
+        <item name="android:layout_width">80dp</item>
+        <item name="android:layout_height">80dp</item>
+        <item name="cornerRadius">40dp</item>
+        <item name="iconSize">40dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:insetLeft">0dp</item>
+        <item name="android:insetRight">0dp</item>
+    </style>
+
+    <!-- Deprecated styles, can be removed -->
+    <style name="CircleButton" parent="Widget.AppCompat.Button">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/circle_button</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="InfoCard" parent="Widget.AppCompat.TextView">
+        <item name="android:background">@drawable/info_card_bg</item>
+        <item name="android:textColor">@color/textColor</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:layout_marginTop">8dp</item>
+    </style>
+
+    <style name="ModeButton" parent="Widget.AppCompat.Button.Borderless">
+        <item name="android:textColor">@color/textColor</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:layout_margin">4dp</item>
+        <item name="android:gravity">center</item>
+    </style>
+</resources>
