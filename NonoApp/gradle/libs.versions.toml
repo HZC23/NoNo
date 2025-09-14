@@ -17,6 +17,7 @@ androidxComposeBom = "2024.09.00"
 androidxComposeCompiler = "1.5.1"
 androidxComposeMaterialIconsExtended = "1.7.8"
 androidxComposeMaterial3WindowSize = "1.4.0-beta03"
+datastorePreferences = "1.0.0"
 
 [libraries]
 # Testing - JUnit 4
@@ -44,6 +45,7 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "androidxComposeMaterialIconsExtended" }
 androidx-compose-material3-window-size = { group = "androidx.compose.material3", name = "material3-window-size-class", version.ref = "androidxComposeMaterial3WindowSize" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
 
 
 [plugins]

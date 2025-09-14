@@ -12,6 +12,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -483,10 +487,7 @@ fun DefaultPreview() {
 
     // Populate with some fake data for preview
     LaunchedEffect(Unit) {
-        viewModel.onSerialReceived("Batterie: 88%")
-        viewModel.onSerialReceived("Cap: 123, Cible: 90")
-        viewModel.onSerialReceived("Distance US: 34 cm")
-        viewModel.onSerialReceived("Distance US: 56 cm")
+        // Removed direct calls to viewModel.onSerialReceived
     }
 
     NonoControllerScreen(

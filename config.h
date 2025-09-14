@@ -1,4 +1,3 @@
-
 #ifndef CONFIG_H
 #define CONFIG_H
 
@@ -22,6 +21,8 @@
 // LEDs
 #define LED_ROUGE 22
 #define LED_JAUNE 24
+// Headlight
+#define PIN_PHARE 38
 // Other
 #define VBAT A0
 #define INTERUPTPIN 6

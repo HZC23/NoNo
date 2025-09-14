@@ -18,7 +18,13 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import com.hzc23.nonocontroller.MainViewModelFactory
 
+import android.util.Log
+import com.google.gson.Gson
+import com.hzc23.nonocontroller.RobotTelemetry
+
 class MainActivity : BlunoLibrary() {
+
+    private val gson = Gson()
 
     enum class RobotMode(val command: String, val displayName: String) {
         MANUAL("manual", "Manuel"),
@@ -94,9 +100,14 @@ class MainActivity : BlunoLibrary() {
     }
 
     override fun onSerialReceived(theString: String?) {
-        theString?.let {
+        theString?.let { jsonString ->
             GlobalScope.launch(Dispatchers.IO) {
-                viewModel.onSerialReceived(it)
+                try {
+                    val telemetry = gson.fromJson(jsonString.trim(), RobotTelemetry::class.java)
+                    viewModel.updateTelemetry(telemetry)
+                } catch (e: Exception) {
+                    Log.e("RobotTelemetry", "Erreur de parsing JSON: $jsonString", e)
+                }
             }
         }
     }

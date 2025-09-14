@@ -1,5 +1,6 @@
 package com.dfrobot.angelo.blunobasicdemo;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,8 +56,13 @@ public abstract class BlunoLibrary extends ComponentActivity {
 	public abstract void onSerialReceived(String theString);
 	public void serialSend(String theString){
 		if (mConnectionState == connectionStateEnum.isConnected) {
-			mSCharacteristic.setValue(theString);
-			mBluetoothLeService.writeCharacteristic(mSCharacteristic);
+			try {
+				String commandWithNewline = theString + "\n";
+				mSCharacteristic.setValue(commandWithNewline.getBytes("ISO-8859-1"));
+				mBluetoothLeService.writeCharacteristic(mSCharacteristic);
+			} catch (UnsupportedEncodingException e) {
+				Log.e(TAG, "UnsupportedEncodingException: " + e.getMessage());
+			}
 		}
 	}
 	

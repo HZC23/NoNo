@@ -1,5 +1,6 @@
 package com.hzc23.nonocontroller
 
+import com.hzc23.nonocontroller.RobotTelemetry
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
@@ -30,6 +31,9 @@ open class MainViewModel(private val settingsDataStore: SettingsDataStore) : Vie
     private val _connectionState = MutableStateFlow("Disconnected")
     val connectionState: StateFlow<String> = _connectionState
 
+    private val _robotTelemetry = MutableStateFlow<RobotTelemetry?>(null)
+    val robotTelemetry: StateFlow<RobotTelemetry?> = _robotTelemetry
+
     val isLayoutInverted: StateFlow<Boolean> = settingsDataStore.isLayoutInverted
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
@@ -50,33 +54,25 @@ open class MainViewModel(private val settingsDataStore: SettingsDataStore) : Vie
         }
     }
 
-    open fun onSerialReceived(line: String) {
+    fun updateTelemetry(telemetry: RobotTelemetry) {
+        _robotTelemetry.value = telemetry
+
         val timestamp = dateFormat.format(Date())
         _debugMessages.update { messages ->
-            (messages + (timestamp to line)).takeLast(100)
+            (messages + (timestamp to telemetry.toString())).takeLast(100)
         }
 
-        val capRegex = """Cap:\s*(\d+),\s*Cible:\s*(\d+)""".toRegex()
-        val distRegex = """Distance US:\s*(\d+)\s*cm""".toRegex()
-        val batRegex = """Batterie:\s*(\d+)%""".toRegex()
-
-        capRegex.find(line)?.let {
-            _currentCap.value = it.groupValues[1].toIntOrNull() ?: 0
-            _targetCap.value = it.groupValues[2].toIntOrNull() ?: 0
-        }
-
-        distRegex.find(line)?.let {
-            val distance = it.groupValues[1].toIntOrNull() ?: 0
-            // Simple alternating assignment for preview
+        telemetry.battery?.let { _batteryLevel.value = it }
+        telemetry.heading?.let { _currentCap.value = it }
+        // Assuming targetCap is also part of telemetry, if not, it needs to be handled differently
+        // telemetry.targetCap?.let { _targetCap.value = it }
+        telemetry.distance?.let { distance ->
+            // Simple alternating assignment for preview, or a more sophisticated logic
             if (_distanceLeft.value == 0) {
                 _distanceLeft.value = distance
             } else {
                 _distanceRight.value = distance
             }
-        }
-
-        batRegex.find(line)?.let {
-            _batteryLevel.value = it.groupValues[1].toIntOrNull() ?: 0
         }
     }
 
