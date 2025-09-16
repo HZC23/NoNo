@@ -1,8 +1,8 @@
 [versions]
 # Android Gradle Plugin
-agp = "8.8.2"
+agp = "8.9.1"
 # Kotlin
-kotlin = "1.9.0"
+kotlin = "2.2.0"
 # Testing Libraries
 junit4 = "4.13.2"
 androidxTestJunit = "1.2.1"
@@ -14,10 +14,11 @@ androidxCore = "1.13.1"
 androidxLifecycle = "2.8.3"
 androidxActivity = "1.9.0"
 androidxComposeBom = "2024.09.00"
-androidxComposeCompiler = "1.5.1"
+androidxComposeCompiler = "2.2.0"
 androidxComposeMaterialIconsExtended = "1.7.8"
 androidxComposeMaterial3WindowSize = "1.4.0-beta03"
 datastorePreferences = "1.0.0"
+coreKtx = "1.17.0"
 
 [libraries]
 # Testing - JUnit 4
@@ -42,16 +43,18 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version = "1.6.8" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "androidxComposeMaterialIconsExtended" }
 androidx-compose-material3-window-size = { group = "androidx.compose.material3", name = "material3-window-size-class", version.ref = "androidxComposeMaterial3WindowSize" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version = "2.2.0" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
 [bundles]
 # Common testing libraries

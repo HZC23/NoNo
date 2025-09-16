@@ -1,13 +1,18 @@
 package com.hzc23.nonocontroller
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
-class MainViewModelFactory(private val settingsDataStore: SettingsDataStore) : ViewModelProvider.Factory {
+class MainViewModelFactory(
+    private val application: Application,
+    private val settingsDataStore: SettingsDataStore,
+    private val blunoLibrary: BlunoLibrary
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return MainViewModel(settingsDataStore) as T
+            return MainViewModel(application, settingsDataStore, blunoLibrary) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

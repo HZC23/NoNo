@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -35,6 +37,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hzc23.nonocontroller.MainViewModel
+import com.hzc23.nonocontroller.RobotMode
+import android.app.Application
 import com.hzc23.nonocontroller.MainActivity
 import com.hzc23.nonocontroller.SettingsDataStore
 import com.hzc23.nonocontroller.ui.theme.NonoControllerTheme
@@ -48,13 +52,14 @@ import androidx.compose.material3.Slider
 fun NonoControllerScreen(
     viewModel: MainViewModel,
     onSendCommand: (String) -> Unit,
-    onSetMode: (MainActivity.RobotMode) -> Unit,
+    onSetMode: (RobotMode) -> Unit,
     onConnect: () -> Unit
 ) {
-    val batteryLevel by viewModel.batteryLevel.collectAsState()
-    val currentCap by viewModel.currentCap.collectAsState()
-    val distanceLeft by viewModel.distanceLeft.collectAsState()
-    val distanceRight by viewModel.distanceRight.collectAsState()
+    val robotTelemetry by viewModel.robotTelemetry.collectAsState()
+    val batteryLevel = robotTelemetry?.battery ?: 0
+    val currentCap = robotTelemetry?.cap ?: 0
+    val distanceLeft = robotTelemetry?.distance ?: 0
+    val distanceRight = robotTelemetry?.distance ?: 0
     val debugMessages by viewModel.debugMessages.collectAsState()
     val isLayoutInverted by viewModel.isLayoutInverted.collectAsState()
     val isDarkModeEnabled by viewModel.isDarkModeEnabled.collectAsState()
@@ -76,7 +81,7 @@ fun NonoControllerScreen(
                 Button(onClick = {
                     val angle = cap.toIntOrNull()?.coerceIn(0, 359)
                     if (angle != null) {
-                        onSendCommand("${MainActivity.RobotMode.CAP.command}=$angle")
+                        onSendCommand("${RobotMode.CAP.command}=$angle")
                     }
                     showCapDialog = false
                 }) {
@@ -96,6 +101,7 @@ fun NonoControllerScreen(
                     modifier = Modifier
                         .padding(16.dp)
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                 ) {
                     Text("Nono Controller", style = MaterialTheme.typography.headlineMedium)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -221,32 +227,32 @@ fun TopBar(
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun ModeButtons(onSetMode: (MainActivity.RobotMode) -> Unit, onCapClick: () -> Unit) {
-    var selectedMode by remember { mutableStateOf(MainActivity.RobotMode.MANUAL) }
+fun ModeButtons(onSetMode: (RobotMode) -> Unit, onCapClick: () -> Unit) {
+    var selectedMode by remember { mutableStateOf(RobotMode.MANUAL) }
 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth(0.9f)) {
         FilterChip(
-            selected = selectedMode == MainActivity.RobotMode.MANUAL,
-            onClick = { selectedMode = MainActivity.RobotMode.MANUAL; onSetMode(MainActivity.RobotMode.MANUAL) },
+            selected = selectedMode == RobotMode.MANUAL,
+            onClick = { selectedMode = RobotMode.MANUAL; onSetMode(RobotMode.MANUAL) },
             label = { Text("Manuel") }
         )
         FilterChip(
-            selected = selectedMode == MainActivity.RobotMode.AUTO,
-            onClick = { selectedMode = MainActivity.RobotMode.AUTO; onSetMode(MainActivity.RobotMode.AUTO) },
+            selected = selectedMode == RobotMode.AUTO,
+            onClick = { selectedMode = RobotMode.AUTO; onSetMode(RobotMode.AUTO) },
             label = { Text("Auto") }
         )
         FilterChip(
-            selected = selectedMode == MainActivity.RobotMode.OBSTACLE,
-            onClick = { selectedMode = MainActivity.RobotMode.OBSTACLE; onSetMode(MainActivity.RobotMode.OBSTACLE) },
+            selected = selectedMode == RobotMode.OBSTACLE,
+            onClick = { selectedMode = RobotMode.OBSTACLE; onSetMode(RobotMode.OBSTACLE) },
             label = { Text("Obstacle") }
         )
         FilterChip(
-            selected = selectedMode == MainActivity.RobotMode.PIR,
-            onClick = { selectedMode = MainActivity.RobotMode.PIR; onSetMode(MainActivity.RobotMode.PIR) },
+            selected = selectedMode == RobotMode.PIR,
+            onClick = { selectedMode = RobotMode.PIR; onSetMode(RobotMode.PIR) },
             label = { Text("PIR") }
         )
         FilterChip(
-            selected = selectedMode == MainActivity.RobotMode.CAP,
+            selected = selectedMode == RobotMode.CAP,
             onClick = { onCapClick() },
             label = { Text("Cap") }
         )
@@ -264,8 +270,8 @@ fun LightControls(onSendCommand: (String) -> Unit) {
             Text("Phare", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onSendCommand("on") }, modifier = Modifier.weight(1f)) { Text("ON") }
-                Button(onClick = { onSendCommand("off") }, modifier = Modifier.weight(1f)) { Text("OFF") }
+                Button(onClick = { onSendCommand("CMD:LIGHT:ON") }, modifier = Modifier.weight(1f)) { Text("ON") }
+                Button(onClick = { onSendCommand("CMD:LIGHT:OFF") }, modifier = Modifier.weight(1f)) { Text("OFF") }
             }
         }
     }
@@ -282,7 +288,7 @@ fun UtilityControls(onSendCommand: (String) -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onSendCommand("scan") }, modifier = Modifier.weight(1f)) { Text("Scan") }
-                Button(onClick = { onSendCommand("calibrer") }, modifier = Modifier.weight(1f)) { Text("Calibrer") }
+                Button(onClick = { onSendCommand("CMD:CALIBRATE:COMPASS") }, modifier = Modifier.weight(1f)) { Text("Calibrer") }
             }
         }
     }
@@ -438,15 +444,15 @@ fun DirectionalController(onSendCommand: (String) -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            ControllerButton(icon = Icons.Default.KeyboardArrowUp, onClick = { onSendCommand("U") }, onRelease = { onSendCommand("stop") }, haptic = haptic)
+            ControllerButton(icon = Icons.Default.KeyboardArrowUp, onClick = { onSendCommand("CMD:MOVE:FWD") }, onRelease = { onSendCommand("CMD:MOVE:STOP") }, haptic = haptic)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ControllerButton(icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = { onSendCommand("L") }, onRelease = { onSendCommand("stop") }, haptic = haptic)
+                ControllerButton(icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = { onSendCommand("CMD:MOVE:LEFT") }, onRelease = { onSendCommand("CMD:MOVE:STOP") }, haptic = haptic)
                 Spacer(modifier = Modifier.width(80.dp))
-                ControllerButton(icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, onClick = { onSendCommand("R") }, onRelease = { onSendCommand("stop") }, haptic = haptic)
+                ControllerButton(icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, onClick = { onSendCommand("CMD:MOVE:RIGHT") }, onRelease = { onSendCommand("CMD:MOVE:STOP") }, haptic = haptic)
             }
-            ControllerButton(icon = Icons.Default.KeyboardArrowDown, onClick = { onSendCommand("D") }, onRelease = { onSendCommand("stop") }, haptic = haptic)
+            ControllerButton(icon = Icons.Default.KeyboardArrowDown, onClick = { onSendCommand("CMD:MOVE:BWD") }, onRelease = { onSendCommand("CMD:MOVE:STOP") }, haptic = haptic)
         }
-        ControllerButton(icon = Icons.Default.Stop, onClick = { onSendCommand("stop") }, onRelease = {}, haptic = haptic, isStop = true)
+        ControllerButton(icon = Icons.Default.Stop, onClick = { onSendCommand("CMD:MOVE:STOP") }, onRelease = {}, haptic = haptic, isStop = true)
     }
 }
 
@@ -482,8 +488,7 @@ fun ControllerButton(icon: ImageVector, onClick: () -> Unit, onRelease: () -> Un
 @Composable
 fun DefaultPreview() {
     val context = LocalContext.current
-    val settingsDataStore = remember { SettingsDataStore(context) }
-    val viewModel = remember { MainViewModel(settingsDataStore) }
+    val viewModel = remember { FakeMainViewModel(context.applicationContext as Application) }
 
     // Populate with some fake data for preview
     LaunchedEffect(Unit) {

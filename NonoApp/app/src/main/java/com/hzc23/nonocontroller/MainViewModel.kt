@@ -1,38 +1,53 @@
 package com.hzc23.nonocontroller
 
-import com.hzc23.nonocontroller.RobotTelemetry
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.bluetooth.BluetoothDevice
+import android.content.Intent
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-open class MainViewModel(private val settingsDataStore: SettingsDataStore) : ViewModel() {
+enum class RobotMode(val command: String) {
+    MANUAL("CMD:MODE:MANUAL"),
+    AUTO("CMD:MODE:AUTO"),
+    OBSTACLE("CMD:MODE:OBSTACLE"),
+    PIR("CMD:MODE:PIR"),
+    CAP("CMD:MODE:CAP")
+}
 
-    private val _batteryLevel = MutableStateFlow(0)
-    val batteryLevel: StateFlow<Int> = _batteryLevel
+enum class ScanState {
+    STOPPED,
+    SCANNING,
+    DONE
+}
 
-    private val _currentCap = MutableStateFlow(0)
-    val currentCap: StateFlow<Int> = _currentCap
+open class MainViewModel(
+    application: Application,
+    private val settingsDataStore: SettingsDataStore,
+    private val blunoLibrary: BlunoLibrary
+) : AndroidViewModel(application), BlunoLibrary.BlunoListener {
 
-    private val _targetCap = MutableStateFlow(0)
-    val targetCap: StateFlow<Int> = _targetCap
+    private val _connectionState = MutableStateFlow(BlunoLibrary.connectionStateEnum.isNull)
+    val connectionState: StateFlow<BlunoLibrary.connectionStateEnum> = _connectionState
 
-    private val _distanceLeft = MutableStateFlow(0)
-    val distanceLeft: StateFlow<Int> = _distanceLeft
+    private val _serialData = MutableStateFlow("")
+    val serialData: StateFlow<String> = _serialData
 
-    private val _distanceRight = MutableStateFlow(0)
-    val distanceRight: StateFlow<Int> = _distanceRight
+    private val _robotTelemetry = MutableStateFlow<RobotTelemetry?>(null)
+    val robotTelemetry: StateFlow<RobotTelemetry?> = _robotTelemetry
 
     private val _debugMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val debugMessages: StateFlow<List<Pair<String, String>>> = _debugMessages
 
-    private val _connectionState = MutableStateFlow("Disconnected")
-    val connectionState: StateFlow<String> = _connectionState
+    private val _scannedDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
+    val scannedDevices: StateFlow<List<BluetoothDevice>> = _scannedDevices
 
-    private val _robotTelemetry = MutableStateFlow<RobotTelemetry?>(null)
-    val robotTelemetry: StateFlow<RobotTelemetry?> = _robotTelemetry
+    private val _scanState = MutableStateFlow(ScanState.STOPPED)
+    val scanState: StateFlow<ScanState> = _scanState
 
     val isLayoutInverted: StateFlow<Boolean> = settingsDataStore.isLayoutInverted
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -41,6 +56,77 @@ open class MainViewModel(private val settingsDataStore: SettingsDataStore) : Vie
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+
+    init {
+        blunoLibrary.setBlunoListener(this)
+    }
+
+    fun startScan() {
+        if (_scanState.value == ScanState.SCANNING) return
+
+        _scannedDevices.value = emptyList() // Clear previous results
+        blunoLibrary.scanLeDevice(true)
+        _scanState.value = ScanState.SCANNING
+        viewModelScope.launch {
+            delay(5000) // Scan for 5 seconds
+            if (_scanState.value == ScanState.SCANNING) {
+                stopScan()
+            }
+        }
+    }
+
+    fun stopScan() {
+        if (_scanState.value != ScanState.SCANNING) return
+        blunoLibrary.scanLeDevice(false)
+        _scanState.value = ScanState.DONE
+    }
+
+    fun resetScanState() {
+        _scanState.value = ScanState.STOPPED
+    }
+
+    fun connect(device: BluetoothDevice) {
+        blunoLibrary.connect(device.address)
+    }
+
+    fun disconnect() {
+        blunoLibrary.disconnect()
+    }
+
+    fun sendCommand(command: String) {
+        blunoLibrary.serialSend(command)
+    }
+
+    fun onResume() {
+        blunoLibrary.onResume()
+    }
+
+    fun onPause() {
+        blunoLibrary.onPause()
+    }
+
+    fun onDestroy() {
+        blunoLibrary.onDestroy()
+    }
+
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        data?.let {
+            blunoLibrary.onActivityResult(requestCode, resultCode, it)
+        }
+    }
+
+    override fun onConnectionStateChange(theConnectionState: BlunoLibrary.connectionStateEnum) {
+        _connectionState.value = theConnectionState
+    }
+
+    override fun onSerialReceived(theString: String) {
+        _serialData.value = theString
+        // TODO: Parse theString to a RobotTelemetry object and call updateTelemetry
+    }
+
+    override fun onDeviceScanned(devices: List<BluetoothDevice>) {
+        _scannedDevices.value = devices
+    }
 
     fun toggleLayoutInversion() {
         viewModelScope.launch {
@@ -61,22 +147,5 @@ open class MainViewModel(private val settingsDataStore: SettingsDataStore) : Vie
         _debugMessages.update { messages ->
             (messages + (timestamp to telemetry.toString())).takeLast(100)
         }
-
-        telemetry.battery?.let { _batteryLevel.value = it }
-        telemetry.heading?.let { _currentCap.value = it }
-        // Assuming targetCap is also part of telemetry, if not, it needs to be handled differently
-        // telemetry.targetCap?.let { _targetCap.value = it }
-        telemetry.distance?.let { distance ->
-            // Simple alternating assignment for preview, or a more sophisticated logic
-            if (_distanceLeft.value == 0) {
-                _distanceLeft.value = distance
-            } else {
-                _distanceRight.value = distance
-            }
-        }
-    }
-
-    fun onConnectionStateChanged(state: String) {
-        _connectionState.value = state
     }
 }

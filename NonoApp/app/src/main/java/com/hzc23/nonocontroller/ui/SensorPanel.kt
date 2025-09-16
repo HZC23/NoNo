@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun SensorPanel(
-    speed: Int,
     distance: Int,
     cap: Int,
     targetCap: Int,
@@ -36,20 +35,6 @@ fun SensorPanel(
             )
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Speed
-            Text(
-                text = "Vitesse: $speed",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            LinearProgressIndicator(
-                progress = { speed / 255f },
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // Distance
             Text(
@@ -130,7 +115,6 @@ fun SensorPanel(
 fun SensorPanelPreview() {
     MaterialTheme {
         SensorPanel(
-            speed = 120,
             distance = 50,
             cap = 180,
             targetCap = 200,
