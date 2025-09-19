@@ -2,11 +2,21 @@
 #define TERMINAL_H
 
 #include <Arduino.h>
-#include <strings.h> // For strcasecmp
+#include <ctype.h>
+
 #include "state.h"
 #include "fonctions_motrices.h"
 #include "compass.h"
 #include "support.h" // For Phare control
+
+// Custom implementation of strcasecmp for Arduino compatibility
+inline int strcasecmp_local(const char *s1, const char *s2) {
+    while (*s1 && (tolower((unsigned char)*s1) == tolower((unsigned char)*s2))) {
+        s1++;
+        s2++;
+    }
+    return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
+}
 
 // --- Defines for the command parser ---
 #define CMD_BUFFER_SIZE 64 // Maximum command length (e.g., "CMD:CALIBRATE:COMPASS")
@@ -46,48 +56,48 @@ inline void Terminal(Robot& robot) {
                 char* strtok_state; // For re-entrant strtok_r
                 char* type = strtok_r(cmdBuffer, CMD_DELIMITER, &strtok_state);
 
-                if (type != NULL && strcasecmp(type, "CMD") == 0) {
+                if (type != NULL && strcasecmp_local(type, "CMD") == 0) {
                     char* action = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
                     char* value = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
 
                     if (action != NULL && value != NULL) {
                         // --- Process Actions ---
-                        if (strcasecmp(action, "MOVE") == 0) {
-                            if (strcasecmp(value, "FWD") == 0) {
+                        if (strcasecmp_local(action, "MOVE") == 0) {
+                            if (strcasecmp_local(value, "FWD") == 0) {
                                 robot.vitesseCible = VITESSE_MOYENNE;
                                 changeState(robot, MOVING_FORWARD);
-                            } else if (strcasecmp(value, "BWD") == 0) {
+                            } else if (strcasecmp_local(value, "BWD") == 0) {
                                 robot.vitesseCible = VITESSE_LENTE;
                                 changeState(robot, MOVING_BACKWARD);
-                            } else if (strcasecmp(value, "LEFT") == 0) {
+                            } else if (strcasecmp_local(value, "LEFT") == 0) {
                                 changeState(robot, MANUAL_TURNING_LEFT);
-                            } else if (strcasecmp(value, "RIGHT") == 0) {
+                            } else if (strcasecmp_local(value, "RIGHT") == 0) {
                                 changeState(robot, MANUAL_TURNING_RIGHT);
-                            } else if (strcasecmp(value, "STOP") == 0) {
+                            } else if (strcasecmp_local(value, "STOP") == 0) {
                                 robot.vitesseCible = 0;
                                 changeState(robot, IDLE);
                             }
-                        } else if (strcasecmp(action, "SPEED") == 0) {
+                        } else if (strcasecmp_local(action, "SPEED") == 0) {
                             robot.vitesseCible = constrain(atoi(value), 0, 255);
                             if (DEBUG_MODE) {
                                 Serial.print(F("Vitesse cible mise a: "));
                                 Serial.println(robot.vitesseCible);
                             }
-                        } else if (strcasecmp(action, "GOTO") == 0) {
+                        } else if (strcasecmp_local(action, "GOTO") == 0) {
                             robot.Ncap = atoi(value);
                             robot.vitesseCible = VITESSE_MOYENNE;
                             changeState(robot, FOLLOW_HEADING);
-                        } else if (strcasecmp(action, "TURN") == 0) {
+                        } else if (strcasecmp_local(action, "TURN") == 0) {
                             robot.capCibleRotation = atof(value);
                             changeState(robot, TURNING_LEFT);
-                        } else if (strcasecmp(action, "LIGHT") == 0) {
-                            if (strcasecmp(value, "ON") == 0) {
+                        } else if (strcasecmp_local(action, "LIGHT") == 0) {
+                            if (strcasecmp_local(value, "ON") == 0) {
                                 PhareAllume();
-                            } else if (strcasecmp(value, "OFF") == 0) {
+                            } else if (strcasecmp_local(value, "OFF") == 0) {
                                 PhareEteint();
                             }
-                        } else if (strcasecmp(action, "CALIBRATE") == 0) {
-                            if (strcasecmp(value, "COMPASS") == 0) {
+                        } else if (strcasecmp_local(action, "CALIBRATE") == 0) {
+                            if (strcasecmp_local(value, "COMPASS") == 0) {
                                 changeState(robot, CALIBRATING_COMPASS);
                             }
                         }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="anthracite_grey">#1E1E1E</color>
+    <color name="electric_blue">#0078FF</color>
+    <color name="green">#1DB954</color>
+    <color name="bright_red">#FF3B30</color>
+    <color name="off_white">#F5F5F5</color>
+    <color name="light_grey">#CFCFCF</color>
+    <color name="dark_grey">#2A2A2A</color>
+    <color name="dark_card_grey">#2E2E2E</color>
+    <color name="black_matte">#121212</color>
+</resources>

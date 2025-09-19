@@ -1,4 +1,3 @@
-
 #ifndef STATE_H
 #define STATE_H
 
@@ -19,7 +18,6 @@ struct Robot {
 
     // Motion
     int vitesseCible = 0;
-    int vitesseCourante = 0;
     bool hasReculed = false;
     bool hasTurned = false;
 
@@ -35,6 +33,7 @@ struct Robot {
 
     // Sensors
     int dusm = 0; // Distance UltraSon Mesuree
+    int distanceLaser = 0;
 
     // Compass Calibration
     bool compassInitialized = false;

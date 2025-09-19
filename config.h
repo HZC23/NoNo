@@ -12,25 +12,25 @@
 #define BIN1 4
 #define BIN2 5
 // Ultrasonic Sensor
-#define TRIGGER 12
-#define ECHO 11
+#define TRIGGER 36
+#define ECHO 37
 // Servos
-#define PINDIRECTION 9
-#define PINTOURELLE_H 7
-#define PINTOURELLE_V 8
+#define PINDIRECTION 10
+#define PINTOURELLE_H 8
+#define PINTOURELLE_V 9
 // LEDs
 #define LED_ROUGE 22
 #define LED_JAUNE 24
 // Headlight
 #define PIN_PHARE 38
 // Other
-#define VBAT A0
-#define INTERUPTPIN 6
-#define PIR 10
+#define VBAT A0 // Broche pour la mesure de la tension de la batterie
+#define INTERUPTPIN 39 // Broche pour le bouton d'arrêt d'urgence
+#define PIR 40 // Broche pour le capteur de mouvement PIR
 
 // === HARDWARE & BEHAVIOR CONSTANTS ===
-#define ENABLE_LEDS true
-#define ENABLE_TOWER true
+#define ENABLE_LEDS false // Mettre à true lorsque les LEDs sont installées
+#define ENABLE_TOWER true // Mettre à true lorsque la tourelle est installée
 #define NEUTRE_DIRECTION 90
 #define NEUTRE_TOURELLE 90
 #define DMARGE 30

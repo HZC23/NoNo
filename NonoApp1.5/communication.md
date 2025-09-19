@@ -55,13 +55,13 @@ La télémétrie est envoyée par le robot à intervalle régulier sous la forme
 | `state` | `String` | État actuel de la machine à états du robot (ex: "IDLE", "MOVING_FORWARD"). |
 | `heading` | `Number` | Cap magnétique actuel du robot (en degrés). |
 | `distance`| `Number` | Distance mesurée par le capteur à ultrasons (en cm). |
-| `distanceLaser`| `Number` | Distance mesurée par le capteur laser (en mm). |
 | `battery` | `Number` | Pourcentage de batterie estimé. |
 | `speedTarget`| `Number` | Vitesse cible actuelle des moteurs (0-255). |
+| `speedCurrent`| `Number` | Vitesse réelle moyenne des moteurs (0-255). |
 
 **Exemple de message JSON envoyé par le robot :**
 ```json
-{"state":"FOLLOW_HEADING","heading":92,"distance":45,"distanceLaser":120,"battery":87,"speedTarget":150}
+{"state":"FOLLOW_HEADING","heading":92,"distance":45,"battery":87,"speedTarget":150,"speedCurrent":148}
 ```
 
 **Exemple de code Arduino pour l'envoi :**

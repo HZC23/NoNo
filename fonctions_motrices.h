@@ -48,12 +48,6 @@ inline void updateMotorControl(Robot& robot) {
     return;
   }
   
-  if (robot.vitesseCourante < robot.vitesseCible) {
-    robot.vitesseCourante = min(robot.vitesseCourante + RAMP_STEP, robot.vitesseCible);
-  } else if (robot.vitesseCourante > robot.vitesseCible) {
-    robot.vitesseCourante = max(robot.vitesseCourante - RAMP_STEP, robot.vitesseCible);
-  }
-  
   int pwmA = 0;
   int pwmB = 0;
   
@@ -65,15 +59,15 @@ inline void updateMotorControl(Robot& robot) {
 
     case MOVING_FORWARD:
     case MANUAL_FORWARD:
-      pwmA = robot.vitesseCourante;
-      pwmB = robot.vitesseCourante;
+      pwmA = robot.vitesseCible;
+      pwmB = robot.vitesseCible;
       Servodirection.write(NEUTRE_DIRECTION);
       break;
       
     case MOVING_BACKWARD:
     case MANUAL_BACKWARD:
-      pwmA = -robot.vitesseCourante;
-      pwmB = -robot.vitesseCourante;
+      pwmA = -robot.vitesseCible;
+      pwmB = -robot.vitesseCible;
       Servodirection.write(NEUTRE_DIRECTION);
       break;
       
@@ -105,8 +99,8 @@ inline void updateMotorControl(Robot& robot) {
       {
         float errorFollow = calculateHeadingError(robot.Ncap, getCalibratedHeading(robot));
         int adjustment = Kp_HEADING * errorFollow;
-        pwmA = robot.vitesseCourante + adjustment;
-        pwmB = robot.vitesseCourante - adjustment;
+        pwmA = robot.vitesseCible + adjustment;
+        pwmB = robot.vitesseCible - adjustment;
         int servoAdjustment = constrain(errorFollow * SERVO_ADJUSTMENT_FACTOR, -SERVO_MAX_ADJUSTMENT, SERVO_MAX_ADJUSTMENT);
         Servodirection.write(NEUTRE_DIRECTION + servoAdjustment);
       }

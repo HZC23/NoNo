@@ -3,24 +3,24 @@
 ## 🚨 Hardware Temporairement Désactivé
 
 Les composants suivants sont **temporairement désactivés** car ils ne sont pas encore installés :
-
+<!-- NOTE: Cette section peut être obsolète. Les flags dans config.h sont à `true`. -->
 ### LEDs (Désactivées)
-- **LED Rouge** (Pin A2)
-- **LED Jaune** (Pin A1)
+- **LED Rouge** (Pin 22)
+- **LED Jaune** (Pin 24)
 - **Fonctions affectées** : `balise_jaune()`, `balise_rouge()`
 
 ### Tourelle (Désactivée)
-- **Servo Tourelle** (Pin 12)
+- **Servos Tourelle** (Horizontal: Pin 8, Vertical: Pin 9)
 - **Fonctions affectées** : `scan`, `SCANNING_ENVIRONMENT`, `SMART_TURNING`
 
 ## 🔧 Activation du Hardware
 
-Pour activer ces composants une fois installés, modifiez les flags dans `fonctions.h` :
+Pour activer ces composants une fois installés, modifiez les flags dans `config.h` :
 
 ```cpp
-// Hardware availability flags - set to 1 to enable installed hardware
-#define ENABLE_LEDS 1          // Set to 1 when LEDs are installed
-#define ENABLE_TOWER 1          // Set to 1 when turret is installed
+// Hardware availability flags - set to true to enable installed hardware
+#define ENABLE_LEDS false       // Set to true when LEDs are installed
+#define ENABLE_TOWER true         // Set to true when turret is installed
 ```
 
 ## 📋 Hardware Actuellement Actif

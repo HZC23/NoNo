@@ -26,9 +26,9 @@ inline void sendTelemetry(Robot& robot) {
     doc["state"] = stateString;
     doc["heading"] = robot.cap;
     doc["distance"] = robot.dusm;
+    doc["distanceLaser"] = robot.distanceLaser;
     doc["battery"] = readBatteryPercentage(); // Use the real function now
     doc["speedTarget"] = robot.vitesseCible;
-    doc["speedCurrent"] = robot.vitesseCourante;
 
     // Serialize JSON to Serial port
     serializeJson(doc, Serial);

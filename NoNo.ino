@@ -1,6 +1,7 @@
 // --- INCLUDES ---
 #include <Arduino.h>
 #include <Wire.h>
+#include <Adafruit_VL53L1X.h>
 #include <ArduinoJson.h> // Required for telemetry
 #include "config.h"      // Central configuration for pins and constants
 #include "state.h"       // Global state and hardware objects
@@ -21,6 +22,7 @@ Servo Servodirection;
 Tourelle tourelle(PINTOURELLE_H, PINTOURELLE_V);
 LSM303 compass;
 DFRobot_RGBLCD1602 lcd(0x60, 16, 2);
+Adafruit_VL53L1X vl53 = Adafruit_VL53L1X();
 
 // --- GLOBAL STATE OBJECT ---
 Robot robot;
@@ -31,6 +33,12 @@ void setup() {
     Wire.begin();
     lcd.init();
     if (DEBUG_MODE) Serial.println("--- NONO STARTUP ---");
+
+    if (!vl53.begin(0x29, &Wire)) {
+        Serial.println(F("Failed to boot VL53L1X"));
+        while(1);
+    }
+    vl53.startContinuous(50);
 
     setLcdText(robot, "Je suis NONO");
 
@@ -68,6 +76,11 @@ void loop() {
 
   // Update sensors
   sensor_update_task(robot);
+  robot.cap = getCalibratedHeading(robot);
+  if (vl53.dataReady()) {
+    robot.distanceLaser = vl53.distance();
+    vl53.clearInterrupt();
+  }
 
   // Run state machines
   switch (robot.currentState) {
