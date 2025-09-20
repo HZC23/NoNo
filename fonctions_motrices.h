@@ -61,14 +61,14 @@ inline void updateMotorControl(Robot& robot) {
     case MANUAL_FORWARD:
       pwmA = robot.vitesseCible;
       pwmB = robot.vitesseCible;
-      Servodirection.write(NEUTRE_DIRECTION);
+      // Servodirection.write(NEUTRE_DIRECTION); // Ackermann steering
       break;
       
     case MOVING_BACKWARD:
     case MANUAL_BACKWARD:
       pwmA = -robot.vitesseCible;
       pwmB = -robot.vitesseCible;
-      Servodirection.write(NEUTRE_DIRECTION);
+      // Servodirection.write(NEUTRE_DIRECTION); // Ackermann steering
       break;
       
     case TURNING_LEFT:
@@ -101,16 +101,19 @@ inline void updateMotorControl(Robot& robot) {
         int adjustment = Kp_HEADING * errorFollow;
         pwmA = robot.vitesseCible + adjustment;
         pwmB = robot.vitesseCible - adjustment;
-        int servoAdjustment = constrain(errorFollow * SERVO_ADJUSTMENT_FACTOR, -SERVO_MAX_ADJUSTMENT, SERVO_MAX_ADJUSTMENT);
-        Servodirection.write(NEUTRE_DIRECTION + servoAdjustment);
+        // int servoAdjustment = constrain(errorFollow * SERVO_ADJUSTMENT_FACTOR, -SERVO_MAX_ADJUSTMENT, SERVO_MAX_ADJUSTMENT); // Ackermann steering
+        // Servodirection.write(NEUTRE_DIRECTION + servoAdjustment); // Ackermann steering
       }
       break;
         
     case MAINTAIN_HEADING:
       {
         float errorMaintain = calculateHeadingError(robot.Ncap, getCalibratedHeading(robot));
-        int servoAdjustmentMaintain = constrain(errorMaintain * SERVO_ADJUSTMENT_FACTOR, -SERVO_MAX_ADJUSTMENT, SERVO_MAX_ADJUSTMENT);
-        Servodirection.write(NEUTRE_DIRECTION + servoAdjustmentMaintain);
+        int adjustment = Kp_HEADING * errorMaintain;
+        pwmA = adjustment;
+        pwmB = -adjustment;
+        // int servoAdjustmentMaintain = constrain(errorMaintain * SERVO_ADJUSTMENT_FACTOR, -SERVO_MAX_ADJUSTMENT, SERVO_MAX_ADJUSTMENT); // Ackermann steering
+        // Servodirection.write(NEUTRE_DIRECTION + servoAdjustmentMaintain); // Ackermann steering
       }
       break;
     

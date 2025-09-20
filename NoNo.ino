@@ -18,7 +18,7 @@
 // --- HARDWARE OBJECTS DEFINITION ---
 MX1508 motorA(AIN1, AIN2);
 MX1508 motorB(BIN1, BIN2);
-Servo Servodirection;
+// Servo Servodirection; // Ackermann steering
 Tourelle tourelle(PINTOURELLE_H, PINTOURELLE_V);
 LSM303 compass;
 DFRobot_RGBLCD1602 lcd(0x60, 16, 2);
@@ -56,8 +56,8 @@ void setup() {
     // Init Sensors & Servos
     sensor_init();
     compass_init(robot);
-    Servodirection.attach(PINDIRECTION, 70, 105);
-    Servodirection.write(NEUTRE_DIRECTION);
+    // Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
+    // Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
     #if ENABLE_TOWER
       tourelle.attach();
       tourelle.write(SCAN_CENTER_ANGLE, 90);
