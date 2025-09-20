@@ -51,41 +51,7 @@ Remplacez `<PORT>` par le port sur lequel l'Arduino est connecté.
 
 ## Commandes
 
-Le robot peut être contrôlé via le port série. Voici une liste des commandes disponibles:
-
-*   `stop`: Arrête le robot.
-*   `manual`: Passe en mode de navigation manuel.
-*   `auto`: Passe en mode de navigation automatique (contrôle de cap).
-*   `off`: Éteint le phare.
-*   `on`: Allume le phare.
-*   `dusm`: Affiche la distance mesurée par le capteur à ultrasons.
-*   `obstacle`: Passe en mode d'évitement d'obstacles.
-*   `scan`: Analyse l'environnement à la recherche d'obstacles.
-*   `detect`: Passe en mode de détection PIR.
-*   `cap <0-359>`: Définit le cap cible.
-*   `vitesse <0-255>`: Définit la vitesse cible.
-*   `servo <0-180>`: Définit l'angle du servo.
-*   `Vbat`: Affiche la tension de la batterie.
-*   `capactuel`: Affiche le cap actuel.
-*   `calibrer`: Démarre le processus de calibrage de la boussole.
-*   `debugcompas`: Affiche les informations de débogage de la boussole.
-*   `compasinfo`: Affiche des informations sur la boussole.
-*   `resetcalib`: Réinitialise le calibrage de la boussole.
-*   `distance <5-100>`: Définit la distance de déplacement manuelle.
-*   `mode`: Affiche le mode de navigation actuel.
-*   `virageprecis <angle>`: Effectue un virage précis.
-*   `virage <angle>`: Effectue un virage standard.
-*   `U`: Fait avancer le robot.
-*   `D`: Fait reculer le robot.
-*   `L`: Fait tourner le robot à gauche.
-*   `R`: Fait tourner le robot à droite.
-
-## Modes de navigation
-
-Le robot dispose de deux modes de navigation:
-
-*   **Manuel:** Dans ce mode, le robot est contrôlé directement par l'utilisateur. Les commandes `U`, `D`, `L` et `R` sont utilisées pour déplacer le robot.
-*   **Automatique (contrôle de cap):** Dans ce mode, le robot utilise la boussole pour maintenir un cap spécifique. La commande `U` est utilisée pour faire avancer le robot, et les commandes `L` et `R` sont utilisées pour modifier le cap cible.
+Le robot peut être contrôlé via le port série. Pour une liste complète des commandes et leur description, veuillez consulter le document dédié : [Commandes](./commands.md).
 
 ## Calibrage
 

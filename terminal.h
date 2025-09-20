@@ -100,6 +100,20 @@ inline void Terminal(Robot& robot) {
                             if (strcasecmp_local(value, "COMPASS") == 0) {
                                 changeState(robot, CALIBRATING_COMPASS);
                             }
+                        } else if (strcasecmp_local(action, "TURRET_H") == 0) {
+                            int h_angle = atoi(value);
+                            tourelle.write(h_angle, tourelle.getAngleVertical());
+                        } else if (strcasecmp_local(action, "TURRET_V") == 0) {
+                            int v_angle = atoi(value);
+                            tourelle.write(tourelle.getAngleHorizontal(), v_angle);
+                        } else if (strcasecmp_local(action, "SCAN") == 0) { // New command
+                            if (strcasecmp_local(value, "H") == 0) {
+                                changeState(robot, SCANNING_HORIZONTAL);
+                            } else if (strcasecmp_local(value, "V") == 0) {
+                                changeState(robot, SCANNING_VERTICAL);
+                            } else {
+                                if (DEBUG_MODE) Serial.println(F("Error: Invalid SCAN value. Use H or V."));
+                            }
                         }
                     } else {
                          if (DEBUG_MODE) Serial.println(F("Error: Missing action or value"));

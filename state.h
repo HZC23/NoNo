@@ -7,6 +7,7 @@
 #include <LSM303.h>
 #include <DFRobot_RGBLCD1602.h>
 #include "config.h"
+#include "tourelle.h" // Added for Tourelle class
 
 // Structure to hold the robot's state
 struct Robot {
@@ -35,6 +36,11 @@ struct Robot {
     int dusm = 0; // Distance UltraSon Mesuree
     int distanceLaser = 0;
 
+    // Scanning
+    int currentScanAngleH = SCAN_H_START_ANGLE;
+    int currentScanAngleV = SCAN_V_START_ANGLE;
+    unsigned long lastScanTime = 0;
+
     // Compass Calibration
     bool compassInitialized = false;
     bool compassCalibrated = false;
@@ -60,5 +66,6 @@ extern MX1508 motorB;
 extern Servo Servodirection;
 extern LSM303 compass;
 extern DFRobot_RGBLCD1602 lcd;
+extern Tourelle tourelle; // Added for Tourelle control
 
 #endif // STATE_H

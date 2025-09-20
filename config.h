@@ -54,6 +54,15 @@
 #define CALIBRATION_MOTEUR_B 1.0
 #define SCAN_CENTER_ANGLE 90
 
+// === SCANNING CONSTANTS ===
+#define SCAN_H_START_ANGLE 30
+#define SCAN_H_END_ANGLE 150
+#define SCAN_H_STEP 10
+#define SCAN_V_START_ANGLE 45
+#define SCAN_V_END_ANGLE 135
+#define SCAN_V_STEP 10
+#define SCAN_DELAY_MS 100 // Delay between each scan step
+
 // === STATE & MODE DEFINITIONS ===
 enum RobotState {
   IDLE,
@@ -71,6 +80,8 @@ enum RobotState {
   PIR_DETECT,
   AVOID_MANEUVER,
   SCANNING_ENVIRONMENT,
+  SCANNING_HORIZONTAL, // Added
+  SCANNING_VERTICAL,   // Added
   SMART_TURNING,
   CALIBRATING_COMPASS
 };
