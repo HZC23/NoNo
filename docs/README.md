@@ -1,65 +1,57 @@
-# Robot NoNo
+# NoNo Robot Project
 
-Ceci est un contrôleur de robot basé sur Arduino pour un robot nommé "NoNo".
+Ce dépôt contient le code source pour le firmware Arduino du robot "NoNo", ainsi que la documentation associée.
 
-## Fonctionnalités
+NoNo est un robot mobile différentiel, contrôlé par une carte Arduino Mega, conçu pour la navigation autonome et le contrôle à distance.
 
-*   **Contrôle basé sur une machine à états:** Le comportement du robot est géré par une machine à états, ce qui rend le code plus organisé et plus facile à comprendre.
-*   **Code non bloquant:** Le code est écrit pour être non bloquant, ce qui signifie que le robot est toujours réactif aux commandes.
-*   **Plusieurs modes de navigation:** Le robot dispose de deux modes de navigation: manuel et automatique (contrôle de cap).
-*   **Navigation par boussole:** Le robot peut utiliser une boussole pour naviguer et maintenir un cap spécifique.
-*   **Évitement d'obstacles:** Le robot peut détecter et éviter les obstacles à l'aide d'un capteur à ultrasons.
-*   **Capteur PIR:** Le robot peut détecter les mouvements à l'aide d'un capteur PIR.
-*   **Écran LCD:** Le robot peut afficher des informations sur un écran LCD.
-*   **Interface de commande série:** Le robot peut être contrôlé via le port série.
+## Navigation
 
-## Matériel
+- **[Software](./software.md):** Une description détaillée de l'architecture logicielle, de la machine à états et des principales bibliothèques.
+- **[Hardware](./hardware.md):** La liste des composants électroniques et leur câblage.
+- **[Communication](./communication.md):** Le protocole de communication BLE et série.
+- **[Commands](./commands.md):** La liste exhaustive des commandes série pour contrôler le robot.
+- **[Calibration](./calibration.md):** Des instructions détaillées pour le calibrage du magnétomètre.
 
-*   Arduino Mega
-*   Boussole LSM303
-*   Capteur à ultrasons
-*   Capteur PIR
-*   Écran LCD 16x2
-*   Pilote de moteur MX1508
-*   Servomoteur
+## Fonctionnalités Principales
 
-## Compilation
+- **Architecture non bloquante :** Le firmware est basé sur une machine à états pour un comportement réactif.
+- **Modes de navigation multiples :** Contrôle manuel, suivi de cap (GOTO), et virages relatifs.
+- **Capteurs :**
+    - Magnétomètre/Accéléromètre (LSM303) pour l'orientation.
+    - Capteur de distance à ultrasons pour l'évitement d'obstacles.
+    - Capteur de distance laser (VL53L1X) pour des mesures précises.
+- **Actionneurs :**
+    - Deux moteurs DC avec pilote MX1508 pour la propulsion.
+    - Tourelle avec deux servomoteurs (pan/tilt).
+- **Interface utilisateur :**
+    - Écran LCD pour afficher l'état et les données des capteurs.
+    - Communication série via USB ou Bluetooth pour le contrôle et la télémétrie.
 
-Pour compiler le code, vous aurez besoin de `arduino-cli`. Vous pouvez trouver les instructions d'installation [ici](https://arduino.github.io/arduino-cli/latest/installation/).
+## Développement
 
-Une fois `arduino-cli` installé, vous pouvez compiler le code à l'aide de la commande suivante:
+### Prérequis
 
-```
-ar-cli compile --fqbn arduino:avr:mega
-```
+- [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/)
+- Les bibliothèques Arduino nécessaires (listées dans `NoNo.ino`)
 
-## Téléversement
+### Compilation
 
-Pour téléverser le code sur l'Arduino, vous devrez trouver le port sur lequel l'Arduino est connecté. Vous pouvez le faire à l'aide de la commande suivante:
+Pour compiler le firmware, exécutez la commande suivante à la racine du projet :
 
-```
-ar-cli board list
-```
-
-Une fois que vous avez le port, vous pouvez téléverser le code à l'aide de la commande suivante:
-
-```
-ar-cli upload -p <PORT> --fqbn arduino:avr:mega
+```bash
+arduino-cli compile --fqbn arduino:avr:mega
 ```
 
-Remplacez `<PORT>` par le port sur lequel l'Arduino est connecté.
+### Téléversement
 
-## Commandes
+1.  Identifiez le port de votre carte Arduino :
 
-Le robot peut être contrôlé via le port série. Pour une liste complète des commandes et leur description, veuillez consulter le document dédié : [Commandes](./commands.md).
+    ```bash
+    arduino-cli board list
+    ```
 
-## Calibrage
+2.  Téléversez le code sur la carte (en remplaçant `<PORT>` par le port identifié) :
 
-Le calibrage de la boussole est crucial pour une navigation précise. Le robot utilise une méthode de calibrage à 360 degrés pour compenser les interférences magnétiques.
-
-Pour calibrer la boussole:
-
-1.  Envoyez la commande `calibrer` via le port série.
-2.  **Faites pivoter le robot LENTEMENT sur tous ses axes (X, Y, Z)** pendant environ 15 secondes, en suivant les instructions affichées sur le moniteur série et l'écran LCD.
-
-Pour des instructions détaillées sur le processus de calibrage, y compris les conseils pour un calibrage réussi et la réinitialisation, veuillez consulter le document dédié : [Calibrage de la Boussole](docs/calibration.md).
+    ```bash
+    arduino-cli upload -p <PORT> --fqbn arduino:avr:mega NoNo.ino
+    ```

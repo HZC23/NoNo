@@ -27,6 +27,9 @@ VL53L1X vl53;
 // --- GLOBAL STATE OBJECT ---
 Robot robot;
 
+// --- FORWARD DECLARATIONS ---
+void handleScanning(Robot& robot);
+
 // --- SETUP ---
 void setup() {
     Serial.begin(115200);
@@ -91,64 +94,8 @@ void loop() {
       calibrateCompass(robot);
       break;
 
-    case SCANNING_HORIZONTAL:
-      if (!robot.actionStarted) {
-        robot.currentScanAngleH = SCAN_H_START_ANGLE;
-        tourelle.write(robot.currentScanAngleH, tourelle.getAngleVertical());
-        robot.lastScanTime = millis();
-        robot.actionStarted = true;
-        if (DEBUG_MODE) Serial.println(F("Starting horizontal scan."));
-      }
-
-      if (millis() - robot.lastScanTime >= SCAN_DELAY_MS) {
-        robot.lastScanTime = millis();
-        // Report current angle and distance
-        if (DEBUG_MODE) {
-          Serial.print(F("Scan H: Angle="));
-          Serial.print(robot.currentScanAngleH);
-          Serial.print(F(", Dist="));
-          Serial.println(robot.distanceLaser);
-        }
-
-        robot.currentScanAngleH += SCAN_H_STEP;
-        if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
-          robot.currentScanAngleH = SCAN_H_START_ANGLE; // Reset for next scan
-          changeState(robot, IDLE); // Scan complete
-          if (DEBUG_MODE) Serial.println(F("Horizontal scan complete."));
-        } else {
-          tourelle.write(tourelle.getAngleHorizontal(), robot.currentScanAngleV);
-        }
-      }
-      break;
-
-    case SCANNING_VERTICAL:
-      if (!robot.actionStarted) {
-        robot.currentScanAngleV = SCAN_V_START_ANGLE;
-        tourelle.write(tourelle.getAngleHorizontal(), robot.currentScanAngleV);
-        robot.lastScanTime = millis();
-        robot.actionStarted = true;
-        if (DEBUG_MODE) Serial.println(F("Starting vertical scan."));
-      }
-
-      if (millis() - robot.lastScanTime >= SCAN_DELAY_MS) {
-        robot.lastScanTime = millis();
-        // Report current angle and distance
-        if (DEBUG_MODE) {
-          Serial.print(F("Scan V: Angle="));
-          Serial.print(robot.currentScanAngleV);
-          Serial.print(F(", Dist="));
-          Serial.println(robot.distanceLaser);
-        }
-
-        robot.currentScanAngleV += SCAN_V_STEP;
-        if (robot.currentScanAngleV > SCAN_V_END_ANGLE) {
-          robot.currentScanAngleV = SCAN_V_START_ANGLE; // Reset for next scan
-          changeState(robot, IDLE); // Scan complete
-          if (DEBUG_MODE) Serial.println(F("Vertical scan complete."));
-        } else {
-          tourelle.write(tourelle.getAngleHorizontal(), robot.currentScanAngleV);
-        }
-      }
+    case SCANNING: // Unified scanning state
+      handleScanning(robot);
       break;
 
     default:
@@ -162,4 +109,36 @@ void loop() {
     sendTelemetry(robot);
   }
 }
+
+// --- STATE HANDLERS ---
+
+void handleScanning(Robot& robot) {
+  if (!robot.actionStarted) {
+    robot.currentScanAngleH = SCAN_H_START_ANGLE;
+    tourelle.write(robot.currentScanAngleH, 90); // Start scan at 90 deg vertical
+    robot.lastScanTime = millis();
+    robot.actionStarted = true;
+    if (DEBUG_MODE) Serial.println(F("Starting unified scan."));
+  }
+
+  if (millis() - robot.lastScanTime >= SCAN_DELAY_MS) {
+    robot.lastScanTime = millis();
+    
+    // Report current angle and distance
+    if (DEBUG_MODE) {
+      Serial.print(F("Scan: Angle="));
+      Serial.print(robot.currentScanAngleH);
+      Serial.print(F(", Dist="));
+      Serial.println(robot.distanceLaser);
+    }
+
+    robot.currentScanAngleH += SCAN_H_STEP;
+    if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
+      tourelle.write(SCAN_CENTER_ANGLE, 90); // Center turret when done
+      changeState(robot, IDLE); // Scan complete
+      if (DEBUG_MODE) Serial.println(F("Scan complete."));
+    } else {
+      tourelle.write(robot.currentScanAngleH, 90);
+    }
+  }
 }

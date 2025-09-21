@@ -1,27 +1,94 @@
-# Calibrage de la Boussole (360 degrés)
+# Guide de Calibration du Magnétomètre
 
-Cette page décrit le processus de calibrage avancé de la boussole, qui permet d'obtenir des lectures de cap plus précises en compensant les interférences magnétiques.
+Ce guide explique pourquoi et comment calibrer le magnétomètre (boussole) du robot NoNo.
 
-Pour calibrer la boussole, vous devez suivre ces étapes:
+## Pourquoi la Calibration est-elle Cruciale ?
 
-1.  **Préparation:** Placez le robot sur une surface plane, à l'écart de tout objet métallique ou source de champ magnétique puissant (haut-parleurs, moteurs, etc.).
-2.  **Lancement du calibrage:** Envoyez la commande `calibrer` via le moniteur série de l'IDE Arduino ou tout autre terminal série connecté au robot.
-3.  **Processus de Rotation:** Le robot démarrera le processus de calibrage, qui durera environ **15 secondes**. Pendant ce temps, vous devez **faire pivoter le robot LENTEMENT sur tous ses axes (X, Y, Z)**. Assurez-vous de couvrir toutes les orientations possibles pour que le capteur puisse enregistrer la plage complète des valeurs magnétiques. Le moniteur série affichera les valeurs min/max collectées en temps réel.
-4.  **Fin du calibrage:** Une fois les 15 secondes écoulées, le robot affichera les résultats finaux sur le moniteur série et l'écran LCD. Les données de calibrage (valeurs min/max pour chaque axe) seront automatiquement enregistrées dans l'EEPROM.
+Le magnétomètre mesure le champ magnétique terrestre pour déterminer le cap. Cependant, il est très sensible aux **interférences magnétiques** générées par :
+- Les moteurs du robot.
+- La batterie.
+- Les structures métalliques dans l'environnement (sols en béton armé, etc.).
 
-## Données de Calibrage
+Ces interférences créent des distorsions ("hard-iron" et "soft-iron") qui rendent les lectures brutes du capteur inexactes. La calibration est le processus qui mesure ces distorsions et calcule des offsets pour les compenser, garantissant ainsi une navigation précise.
 
-Les données de calibrage sont stockées dans l'EEPROM et sont chargées automatiquement à chaque démarrage du robot. Ces données incluent:
+**Sans une bonne calibration, les modes de navigation comme `GOTO` et `MAINTAIN_HEADING` ne fonctionneront pas correctement.**
 
-*   **Valeurs Min/Max du Magnétomètre:** Les valeurs minimales et maximales enregistrées pour les axes X, Y et Z du magnétomètre pendant le processus de rotation. Ces valeurs sont utilisées pour corriger les distorsions magnétiques (hard-iron et soft-iron).
-*   **Statut de Calibrage:** Un indicateur booléen confirmant si le calibrage a été effectué avec succès.
+---
 
-## Réinitialisation du Calibrage
+## Processus de Calibration
 
-Pour réinitialiser le calibrage et effacer les données de calibrage de l'EEPROM, envoyez la commande `resetcalib` via le port série. Après cette commande, le robot utilisera les lectures brutes du compas jusqu'à ce qu'un nouveau calibrage soit effectué.
+La calibration est une procédure simple qui prend moins d'une minute.
 
-## Conseils pour un Calibrage Réussi
+### Étape 1 : Préparation
 
-*   **Rotation Lente et Complète:** Assurez-vous de faire pivoter le robot lentement et de couvrir toutes les orientations (haut, bas, côtés, etc.) pour obtenir des données précises.
-*   **Environnement Magnétique Stable:** Évitez de calibrer à proximité de sources d'interférences magnétiques.
-*   **Vérification:** Après le calibrage, vous pouvez utiliser la commande `capactuel` ou `debugcompas` pour vérifier la précision des lectures du cap.
+- Placez le robot dans la zone où il sera le plus souvent utilisé.
+- Éloignez-le de gros objets métalliques ou de sources magnétiques puissantes (enceintes, aimants).
+
+### Étape 2 : Lancement de la Commande
+
+Envoyez la commande de calibration via le terminal série :
+
+| Commande | Action | Valeur |
+| :--- | :--- | :--- |
+| `CMD` | `CALIBRATE` | `COMPASS` |
+
+Le robot entrera en mode calibration, et l'écran LCD affichera "Calibrating...".
+
+### Étape 3 : La Danse de la Calibration (15 secondes)
+
+C'est l'étape la plus importante. Pendant 15 secondes, vous devez **faire tourner lentement le robot sur tous ses axes**.
+
+Imaginez que le robot est au centre d'un globe. Vous devez lui faire "peindre" toute la surface intérieure de ce globe.
+
+- **Penchez-le** en avant, en arrière.
+- **Roulez-le** sur ses côtés gauche et droit.
+- **Faites-le pivoter** à plat.
+
+```
+      /--->\
+     |      |
+     \--<--/
+  (Pivoter sur place)
+
+      ^
+     / \
+    /   \
+   <----->
+(Penchez d'avant en arrière)
+
+   ------
+  /      \
+ |        |
+  \      /
+   ------
+(Roulez sur les côtés)
+```
+
+Le but est d'exposer le capteur à la plus grande variété d'orientations possible par rapport au champ magnétique terrestre.
+
+### Étape 4 : Fin et Sauvegarde
+
+Après 15 secondes, le robot arrêtera automatiquement la procédure.
+- Les nouvelles valeurs de calibration (offsets) seront calculées.
+- Elles seront **automatiquement sauvegardées dans la mémoire EEPROM** du robot.
+- L'écran LCD affichera "Calibration OK".
+
+Les données de calibration sont maintenant persistantes et seront chargées à chaque démarrage.
+
+---
+
+## Commandes Associées
+
+| Commande | Action | Valeur | Description |
+| :--- | :--- | :--- | :--- |
+| `CMD` | `CALIBRATE` | `COMPASS` | Lance la procédure de calibration de 15 secondes. |
+| `CMD` | `RESET` | `CALIB` | **(Non implémenté)** Efface les données de calibration de l'EEPROM. Utile si vous déplacez le robot dans un environnement très différent. |
+
+## Dépannage
+
+- **Le cap est toujours incorrect :**
+    - Avez-vous tourné le robot assez lentement et dans toutes les directions ? Une rotation trop rapide ou incomplète donnera de mauvais résultats. Relancez la calibration.
+    - Y a-t-il une nouvelle source d'interférence près du robot ? (un nouveau composant, un objet métallique)
+- **Le robot ne semble pas calibrer :**
+    - Vérifiez que la commande `CMD:CALIBRATE:COMPASS\n` est bien envoyée.
+    - Observez l'écran LCD et le moniteur série pour des messages d'erreur.

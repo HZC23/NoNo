@@ -1,69 +1,59 @@
-# Configuration du Hardware - Robot Nono
+# Matériel du Robot NoNo
 
-## 🚨 Statut du Hardware
+Ce document liste les composants électroniques et leur câblage sur la carte Arduino Mega.
 
-### LEDs (Désactivées)
-- **Statut**: Désactivé dans `config.h` (`ENABLE_LEDS false`).
-- **LED Rouge** (Pin 22)
-- **LED Jaune** (Pin 24)
-- **Fonctions affectées** : `balise_jaune()`, `balise_rouge()`
+## Composants Principaux
 
-### Tourelle (Activée)
-- **Statut**: Activé dans `config.h` (`ENABLE_TOWER true`).
-- **Servos Tourelle** (Horizontal: Pin 8, Vertical: Pin 9)
-- **Fonctions affectées** : `scan`, `SCANNING_ENVIRONMENT`, `SMART_TURNING`
+| Composant | Modèle | Rôle |
+| :--- | :--- | :--- |
+| **Microcontrôleur** | Arduino Mega 2560 | Cerveau du robot, exécute le firmware. |
+| **Driver Moteurs** | MX1508 | Contrôle la vitesse et la direction des deux moteurs de propulsion. |
+| **Communication** | DFRobot Bluno | Module BLE pour la communication sans fil avec l'application. |
 
-### Servo Direction (Désactivé)
-- **Statut**: Le code pour le servo de direction (Ackermann) a été désactivé au profit de la direction différentielle.
-- Le code est commenté dans `NoNo.ino` et `fonctions_motrices.h`.
+## Capteurs
 
-## 🔧 Activation du Hardware
+| Capteur | Modèle | Interface | Rôle |
+| :--- | :--- | :--- | :--- |
+| **Centrale inertielle** | LSM303 | I2C | Fournit les données de l'accéléromètre et du magnétomètre pour le calcul du cap. |
+| **Distance (Ultrasons)** | HC-SR04 | Digital | Détection d'obstacles à moyenne portée. |
+| **Distance (Laser)** | VL53L1X | I2C | Mesure de distance précise à courte portée (Time-of-Flight). |
+| **Détection de mouvement**| PIR Sensor | Digital | Détecte les mouvements dans l'environnement. |
 
-Pour activer les LEDs, modifiez le flag dans `config.h` :
+## Actionneurs
 
-```cpp
-// Hardware availability flags - set to true to enable installed hardware
-#define ENABLE_LEDS true       // Set to true when LEDs are installed
-```
+| Actionneur | Modèle | Rôle |
+| :--- | :--- | :--- |
+| **Moteurs (x2)** | Moteur DC standard | Propulsion du robot (direction différentielle). |
+| **Servomoteurs (x2)** | SG90 ou équivalent | Contrôlent les mouvements Pan/Tilt de la tourelle. |
+| **Phares** | LED haute luminosité | Éclairage avant. |
 
-## 📋 Hardware Actuellement Actif
+## Interface Utilisateur
 
-### ✅ Composants Fonctionnels
-- **Moteurs** (Pins 2,3,4,5) - Contrôle MX1508. La direction est maintenant gérée de manière différentielle.
-- **Capteur Ultrasonique** (Pins 36,37) - Détection d'obstacles
-- **Compas LSM303** (I2C) - Navigation par cap
-- **LCD RGB** (I2C 0x60) - Affichage
-- **Phares** (Pin 38) - Éclairage
-- **Capteur PIR** (Pin 40) - Détection de mouvement
-- **Bouton d'arrêt** (Pin 39) - Arrêt d'urgence
+| Composant | Modèle | Interface | Rôle |
+| :--- | :--- | :--- | :--- |
+| **Écran LCD** | LCD I2C 16x2 | I2C | Affiche l'état, la télémétrie et les menus. |
+| **Bouton d'arrêt** | Bouton poussoir | Digital | Arrêt d'urgence matériel. |
 
-### 🎮 Commandes Disponibles
-- **Mouvement** : U, D, L, R, stop
-- **Modes** : manual, auto, obstacle, detect
-- **Navigation** : cap[angle], virage[angle]
-- **Contrôle** : vitesse[valeur]
-- **Phares** : on, off
-- **Capteurs** : dusm, Vbat
-- **Compas** : capactuel, calibrer, debugcompas, compasinfo
+---
 
-## 🔄 Réactivation des Composants
+## Tableau de Câblage (Pinout)
 
-### LEDs
-1. Connecter les LEDs aux pins 22 et 24
-2. Modifier `#define ENABLE_LEDS true` dans `config.h`
-3. Recompiler et téléverser
+| Pin Arduino Mega | Composant | Broche du composant |
+| :--- | :--- | :--- |
+| **GND** | *Multiple* | GND |
+| **5V** | *Multiple* | VCC |
+| **SDA (20)** | LSM303, VL53L1X, LCD | SDA |
+| **SCL (21)** | LSM303, VL53L1X, LCD | SCL |
+| **2** | Driver Moteur MX1508 | IN1 (Moteur Gauche) |
+| **3** | Driver Moteur MX1508 | IN2 (Moteur Gauche) |
+| **4** | Driver Moteur MX1508 | IN3 (Moteur Droit) |
+| **5** | Driver Moteur MX1508 | IN4 (Moteur Droit) |
+| **8** | Servo Tourelle Horizontal | Signal |
+| **9** | Servo Tourelle Vertical | Signal |
+| **36** | Capteur Ultrasons | Echo |
+| **37** | Capteur Ultrasons | Trig |
+| **38** | Phares (via transistor) | Base |
+| **39** | Bouton d'arrêt | Signal |
+| **40** | Capteur PIR | Out |
 
-## ⚠️ Notes Importantes
-
-- Le robot fonctionne parfaitement sans les LEDs.
-- Les modes d'évitement d'obstacles utilisent le capteur ultrasonique fixe
-- La navigation par compas reste entièrement fonctionnelle
-
-## 🐛 Dépannage
-
-Si vous rencontrez des erreurs après activation :
-1. Vérifiez les connexions hardware
-2. Vérifiez que les pins sont corrects
-3. Vérifiez l'alimentation des composants
-4. Utilisez `debugcompas` pour vérifier le compas
-5. Utilisez `dusm` pour tester le capteur ultrasonique
+> **Note sur les LEDs de statut :** Le design original incluait des LEDs de statut sur les pins 22 (Rouge) et 24 (Jaune), mais elles sont actuellement désactivées dans `config.h`.
