@@ -33,15 +33,15 @@
 #define ENABLE_TOWER true // Mettre à true lorsque la tourelle est installée
 #define NEUTRE_DIRECTION 90
 #define NEUTRE_TOURELLE 90
-#define DMARGE 30
-#define DARRET 15
-#define VMINI 80
+#define DMARGE 20 // Marge de sécurité en cm pour la détection d'obstacles
+#define DARRET 15 // Distance d'arrêt d'urgence en cm
+#define VMINI 150
 #define INITIAL_CAP 0
 #define INITIAL_NCAP 0
-#define VITESSE_LENTE 100
-#define VITESSE_MOYENNE 150
-#define VITESSE_RAPIDE 200
-#define VITESSE_ROTATION 120
+#define VITESSE_LENTE 150
+#define VITESSE_MOYENNE 200
+#define VITESSE_RAPIDE 250
+#define VITESSE_ROTATION 200
 #define RAMP_STEP 5
 #define ACCELERATION_STEP 10
 #define DECELERATION_STEP 10
@@ -53,12 +53,30 @@
 #define SERVO_MAX_ADJUSTMENT 20
 #define CALIBRATION_MOTEUR_B 1.0
 #define SCAN_CENTER_ANGLE 90
+#define COMPASS_IS_INVERTED true // Mettre à true si la boussole est montée à l'envers
 
 // === SCANNING CONSTANTS ===
-#define SCAN_H_START_ANGLE 30
-#define SCAN_H_END_ANGLE 150
+#define SCAN_H_START_ANGLE 10
+#define SCAN_H_END_ANGLE 170
 #define SCAN_H_STEP 10
-#define SCAN_DELAY_MS 100 // Delay between each scan step
+#define SCAN_DELAY_MS 200 // Delay between each scan step
+
+// === INITIALIZATION ===
+#define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup
+
+// === INITIALIZATION ===
+
+
+// === LCD MESSAGES ===
+#define LCD_STARTUP_MESSAGE_1 "Je suis NONO"
+#define LCD_STARTUP_MESSAGE_2 "Pret."
+
+#define SCAN_V_START_ANGLE NEUTRE_TOURELLE
+#define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle
+#define SCAN_V_STEP 1 // Not used for now, but good to have
+
+// === SENSOR CONSTANTS ===
+#define MAX_ULTRASONIC_DISTANCE 400 // Max valid distance in cm (e.g., 400cm = 4m)
 
 // === STATE & MODE DEFINITIONS ===
 enum RobotState {
@@ -75,7 +93,9 @@ enum RobotState {
   FOLLOW_HEADING,
   MAINTAIN_HEADING,
   AVOID_MANEUVER,
-  SCANNING_ENVIRONMENT,
+  BACKING_UP_OBSTACLE, // New state for backing up from obstacle
+  SCANNING_FOR_PATH,   // New state for scanning for a new path
+  TURNING_TO_PATH,     // New state for turning to the new path
   SMART_TURNING,
   CALIBRATING_COMPASS,
   SCANNING,

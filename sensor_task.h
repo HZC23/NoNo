@@ -19,15 +19,18 @@ static unsigned long g_ping_sent_time = 0;
 
 // --- Constantes ---
 const unsigned long PING_INTERVAL_MS = 60; // Temps minimum entre les pings
-const unsigned long PING_TIMEOUT_MS = 30;  // Temps max d'attente d'un écho (30ms ~ 5m de distance)
+const unsigned long PING_TIMEOUT_MS = 200;  // Temps max d'attente d'un écho (30ms ~ 5m de distance)
 
 // --- Routine de Service d'Interruption ---
 static void echo_isr() {
   if (digitalRead(ECHO) == HIGH) {
     g_echo_start_time = micros();
   } else {
-    g_echo_end_time = micros();
-    g_echo_received = true;
+    // Only record end time if start time was recorded
+    if (g_echo_start_time != 0) { 
+      g_echo_end_time = micros();
+      g_echo_received = true;
+    }
   }
 }
 
@@ -64,14 +67,31 @@ inline void sensor_update_task(Robot& robot) {
       if (g_echo_received) {
         noInterrupts();
         unsigned long duration = g_echo_end_time - g_echo_start_time;
+        // Reset g_echo_start_time to 0 after use to ensure it's set again for the next valid echo
+        g_echo_start_time = 0; 
         interrupts();
-        // Le "nombre magique" 58 est une approximation pour (1 / (vitesse_du_son_cm_par_us / 2))
-        robot.dusm = duration / 58;
+        
+        // Calculate distance in cm
+        // Speed of sound in air is approx. 343 meters/second or 0.0343 cm/microsecond.
+        // The sound travels to the object and back, so divide by 2.
+        // Distance = (duration * 0.0343) / 2 = duration / 58.2
+        // Using 58 for approximation.
+        int distance_cm = duration / 58; 
+
+        // Filter out distances that are too large or too small (noise)
+        if (distance_cm > 0 && distance_cm <= MAX_ULTRASONIC_DISTANCE) {
+          robot.dusm = distance_cm;
+        } else {
+          robot.dusm = -1; // Invalid reading
+        }
+
+        
         g_sensor_state = SensorPingState::IDLE; // Réinitialiser pour le prochain ping
       } 
       // Cas 2: L'écho n'est pas revenu à temps (timeout)
       else if (current_time - g_ping_sent_time > PING_TIMEOUT_MS) {
         robot.dusm = -1; // Utiliser -1 pour indiquer une lecture invalide ou hors de portée
+        
         g_sensor_state = SensorPingState::IDLE; // Réinitialiser pour le prochain ping
       }
       break;

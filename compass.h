@@ -89,6 +89,12 @@ inline float getCalibratedHeading(Robot& robot) {
                 heading -= 360.0;
             }
         }
+        // Apply fine-tuning offset
+        heading += robot.compassOffset;
+
+        // Normalize heading to 0-359.9 degrees
+        while (heading < 0.0) heading += 360.0;
+        while (heading >= 360.0) heading -= 360.0;
         return heading;
     } else {
         return calculateHeading(compass);

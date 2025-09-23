@@ -16,6 +16,8 @@ struct Robot {
     NavigationMode currentNavMode = MANUAL_CONTROL;
     unsigned long lastActionTime = 0;
     bool actionStarted = false;
+    bool initialActionTaken = false;
+    int consecutiveAvoidManeuvers = 0;
 
     // Motion
     int vitesseCible = 0;
@@ -38,14 +40,16 @@ struct Robot {
 
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
-    int currentScanAngleV = SCAN_V_START_ANGLE;
+    // int currentScanAngleV = SCAN_V_START_ANGLE;
     unsigned long lastScanTime = 0;
+    int scanDistances[181]; // To store distances for angles 0-180
+    int bestAvoidAngle;
 
     // Compass Calibration
     bool compassInitialized = false;
     bool compassCalibrated = false;
     bool compassInverted = false;
-    float compassOffset = 180;
+    float compassOffset = 0.0;
     LSM303::vector<int16_t> magMin = {32767, 32767, 32767};
     LSM303::vector<int16_t> magMax = {-32768, -32768, -32768};
 

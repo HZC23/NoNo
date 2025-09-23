@@ -26,6 +26,7 @@ VL53L1X vl53;
 
 // --- GLOBAL STATE OBJECT ---
 Robot robot;
+unsigned long startTime;
 
 // --- FORWARD DECLARATIONS ---
 void handleScanning(Robot& robot);
@@ -36,6 +37,7 @@ void setup() {
     Wire.begin();
     lcd.init();
     if (DEBUG_MODE) Serial.println("--- NONO STARTUP ---");
+    startTime = millis(); // Initialize startupTime
 
     if (DEBUG_MODE) Serial.println("Initializing VL53L1X...");
     vl53.setBus(&Wire);
@@ -47,7 +49,7 @@ void setup() {
     vl53.setMeasurementTimingBudget(50000);
     vl53.startContinuous(50);
 
-    setLcdText(robot, "Je suis NONO");
+    setLcdText(robot, LCD_STARTUP_MESSAGE_1);
 
     // Init hardware
     pinMode(PIR, INPUT);
@@ -63,6 +65,7 @@ void setup() {
     // Init Sensors & Servos
     sensor_init();
     compass_init(robot);
+    robot.compassInverted = COMPASS_IS_INVERTED; // Apply inversion setting from config
     // Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
     // Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
     #if ENABLE_TOWER
@@ -73,7 +76,7 @@ void setup() {
     PhareAllume(); // Turn on headlights at startup
 
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
-    setLcdText(robot, "Pret.");
+    setLcdText(robot, LCD_STARTUP_MESSAGE_2);
 }
 
 // --- MAIN LOOP ---
@@ -81,11 +84,17 @@ void loop() {
   // Process incoming commands
   Terminal(robot); 
 
+  // Transition to OBSTACLE_AVOIDANCE only once at startup
+  if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
+      changeState(robot, OBSTACLE_AVOIDANCE);
+      robot.initialActionTaken = true;
+  }
+
   // Update sensors
   sensor_update_task(robot);
   robot.cap = getCalibratedHeading(robot);
   if (vl53.dataReady()) {
-    robot.distanceLaser = vl53.readRangeContinuousMillimeters();
+    robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
   }
 
   // Run state machines

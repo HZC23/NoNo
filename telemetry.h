@@ -14,11 +14,23 @@ inline void sendTelemetry(Robot& robot) {
     const char* stateString;
     switch (robot.currentState) {
         case IDLE: stateString = "IDLE"; break;
-        case MOVING_FORWARD: stateString = "MOVING_FORWARD"; break;
-        case MOVING_BACKWARD: stateString = "MOVING_BACKWARD"; break;
-        case TURNING_LEFT: stateString = "TURNING_LEFT"; break;
-        case TURNING_RIGHT: stateString = "TURNING_RIGHT"; break;
+        case MOVING_FORWARD:
+        case MANUAL_FORWARD:
+            stateString = "MOVING_FORWARD"; break;
+        case MOVING_BACKWARD:
+        case MANUAL_BACKWARD:
+            stateString = "MOVING_BACKWARD"; break;
+        case TURNING_LEFT:
+        case MANUAL_TURNING_LEFT:
+            stateString = "TURNING_LEFT"; break;
+        case TURNING_RIGHT:
+        case MANUAL_TURNING_RIGHT:
+            stateString = "TURNING_RIGHT"; break;
         case FOLLOW_HEADING: stateString = "FOLLOW_HEADING"; break;
+        case MAINTAIN_HEADING: stateString = "MAINTAIN_HEADING"; break;
+        case OBSTACLE_AVOIDANCE: stateString = "OBSTACLE_AVOIDANCE"; break;
+        case AVOID_MANEUVER: stateString = "AVOID_MANEUVER"; break;
+        case SCANNING: stateString = "SCANNING"; break;
         default: stateString = "UNKNOWN"; break;
     }
 

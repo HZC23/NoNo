@@ -117,13 +117,28 @@ inline void Terminal(Robot& robot) {
                             if (strcasecmp_local(value, "START") == 0) {
                                 changeState(robot, SCANNING);
                             }
+                        } else if (strcasecmp_local(action, "COMPASS_OFFSET") == 0) {
+                            robot.compassOffset = atof(value);
+                            saveCompassCalibration(robot); // Persist the new offset
+                            if (DEBUG_MODE) {
+                                Serial.print(F("Compass offset set to: "));
+                                Serial.println(robot.compassOffset);
+                            }
                         } else if (strcasecmp_local(action, "MODE") == 0) {
                             if (strcasecmp_local(value, "AVOID") == 0) {
+                                robot.Ncap = robot.cap; // Set target to current heading
+                                robot.vitesseCible = VITESSE_MOYENNE;
                                 changeState(robot, SMART_AVOIDANCE);
                             } else if (strcasecmp_local(value, "SENTRY") == 0) {
                                 changeState(robot, SENTRY_MODE);
                             } else if (strcasecmp_local(value, "MANUAL") == 0) {
                                 changeState(robot, IDLE);
+                            }
+                        } else if (strcasecmp_local(action, "LCD") == 0) {
+                            if (strlen(value) > 32) {
+                                if (DEBUG_MODE) Serial.println(F("Error: LCD text too long (max 32 chars)"));
+                            } else {
+                                setLcdText(robot, String(value));
                             }
                         }
                     } else {
