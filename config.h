@@ -6,11 +6,11 @@
 
 // === PIN DEFINITIONS ===
 // Motor A (Droite)
-#define AIN1 2
-#define AIN2 3
+#define AIN1 3
+#define AIN2 2
 // Motor B (Gauche)
-#define BIN1 4
-#define BIN2 5
+#define BIN1 5
+#define BIN2 4
 // Ultrasonic Sensor
 #define TRIGGER 36
 #define ECHO 37
@@ -63,6 +63,7 @@
 
 // === INITIALIZATION ===
 #define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup
+#define MAX_CONSECUTIVE_AVOID_MANEUVERS 3
 
 // === INITIALIZATION ===
 

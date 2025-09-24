@@ -18,7 +18,8 @@ bool isObstacleDetected(Robot& robot);
 inline bool isObstacleDetected(Robot& robot) {
     bool ultraSonicObstacle = (robot.dusm < DMARGE && robot.dusm > 0);
     bool laserObstacle = (robot.distanceLaser < DMARGE && robot.distanceLaser > 0);
-    return ultraSonicObstacle || laserObstacle;
+    bool laserTooClose = (robot.distanceLaser < 10 && robot.distanceLaser > 0); // 100mm = 10cm
+    return ultraSonicObstacle || laserObstacle || laserTooClose;
 }
 
 inline void changeState(Robot& robot, RobotState newState) {
@@ -28,6 +29,12 @@ inline void changeState(Robot& robot, RobotState newState) {
   robot.actionStarted = false;
   robot.lastActionTime = millis();
   
+  if (newState == OBSTACLE_AVOIDANCE) {
+    robot.consecutiveAvoidManeuvers++;
+  } else {
+    robot.consecutiveAvoidManeuvers = 0; // Reset counter on other state changes
+  }
+
   if (newState != AVOID_MANEUVER) {
     robot.hasReculed = false;
     robot.hasTurned = false;
@@ -100,8 +107,8 @@ inline void updateMotorControl(Robot& robot) {
         break;
       }
 
-      pwmA = -VITESSE_ROTATION;
-      pwmB = VITESSE_ROTATION;
+      pwmA = VITESSE_ROTATION;
+      pwmB = -VITESSE_ROTATION;
       
       {
           float error = calculateHeadingError(robot.capCibleRotation, getCalibratedHeading(robot));
@@ -112,9 +119,9 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case MANUAL_TURNING_LEFT:
-      pwmA = -VITESSE_ROTATION;
-      pwmB = VITESSE_ROTATION;
-      changeState(robot, IDLE); // Return to IDLE, requires continuous command
+      pwmA = VITESSE_ROTATION;
+      pwmB = -VITESSE_ROTATION;
+      // Removed: changeState(robot, IDLE); // Robot stays in this state as long as command is received
       break;
        
     case TURNING_RIGHT:
@@ -130,8 +137,8 @@ inline void updateMotorControl(Robot& robot) {
         break;
       }
 
-      pwmA = VITESSE_ROTATION;
-      pwmB = -VITESSE_ROTATION;
+      pwmA = -VITESSE_ROTATION;
+      pwmB = VITESSE_ROTATION;
       
       {
           float error = calculateHeadingError(robot.capCibleRotation, getCalibratedHeading(robot));
@@ -142,9 +149,9 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case MANUAL_TURNING_RIGHT:
-      pwmA = VITESSE_ROTATION;
-      pwmB = -VITESSE_ROTATION;
-      changeState(robot, IDLE); // Return to IDLE, requires continuous command
+      pwmA = -VITESSE_ROTATION;
+      pwmB = VITESSE_ROTATION;
+      // Removed: changeState(robot, IDLE); // Robot stays in this state as long as command is received
       break;
       
     case FOLLOW_HEADING:
@@ -168,6 +175,12 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case OBSTACLE_AVOIDANCE:
+      // If the front switch is still pressed, immediately back up
+      if (digitalRead(INTERUPTPIN) == LOW) {
+          changeState(robot, AVOID_MANEUVER);
+          return;
+      }
+
       if (!robot.actionStarted) {
         // Initial setup for obstacle avoidance
         Arret(); // Stop the robot
@@ -253,7 +266,12 @@ inline void updateMotorControl(Robot& robot) {
         pwmB = -VITESSE_LENTE;
       } else {
         if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Backup complete. Rescanning.");
-        changeState(robot, OBSTACLE_AVOIDANCE); // Now try scanning again
+        if (robot.consecutiveAvoidManeuvers >= MAX_CONSECUTIVE_AVOID_MANEUVERS) {
+          if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Max consecutive avoid maneuvers reached. Going IDLE.");
+          changeState(robot, IDLE); // Give up and go IDLE
+        } else {
+          changeState(robot, OBSTACLE_AVOIDANCE); // Now try scanning again
+        }
       }
       break;
 

@@ -72,9 +72,6 @@ void setup() {
       tourelle.attach();
       tourelle.write(SCAN_CENTER_ANGLE, 90);
     #endif
-
-    PhareAllume(); // Turn on headlights at startup
-
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
 }
