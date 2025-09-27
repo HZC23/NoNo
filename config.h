@@ -33,8 +33,8 @@
 #define ENABLE_TOWER true // Mettre à true lorsque la tourelle est installée
 #define NEUTRE_DIRECTION 90
 #define NEUTRE_TOURELLE 90
-#define DMARGE 20 // Marge de sécurité en cm pour la détection d'obstacles
-#define DARRET 15 // Distance d'arrêt d'urgence en cm
+#define ULTRASONIC_OBSTACLE_THRESHOLD_CM 10 // Ultrasonic obstacle threshold in cm
+#define LASER_OBSTACLE_THRESHOLD_CM 20   // Laser obstacle threshold in cm
 #define VMINI 150
 #define INITIAL_CAP 0
 #define INITIAL_NCAP 0
@@ -69,8 +69,8 @@
 
 
 // === LCD MESSAGES ===
-#define LCD_STARTUP_MESSAGE_1 "Je suis NONO"
-#define LCD_STARTUP_MESSAGE_2 "Pret."
+#define LCD_STARTUP_MESSAGE_1 "I am NONO"
+#define LCD_STARTUP_MESSAGE_2 "I will show you my skills"
 
 #define SCAN_V_START_ANGLE NEUTRE_TOURELLE
 #define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle

@@ -33,6 +33,7 @@ void handleScanning(Robot& robot);
 
 // --- SETUP ---
 void setup() {
+    digitalWrite(PIN_PHARE, HIGH); // Turn on headlight at the beginning of setup
     Serial.begin(115200);
     Wire.begin();
     lcd.init();
@@ -59,7 +60,9 @@ void setup() {
     
     #if ENABLE_LEDS
       pinMode(LED_ROUGE, OUTPUT);
+      digitalWrite(LED_ROUGE, LOW);
       pinMode(LED_JAUNE, OUTPUT);
+      digitalWrite(LED_JAUNE, LOW);
     #endif
 
     // Init Sensors & Servos
@@ -74,6 +77,7 @@ void setup() {
     #endif
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
+    digitalWrite(PIN_PHARE, LOW); // Turn off headlight at the end of setup
 }
 
 // --- MAIN LOOP ---
@@ -84,6 +88,7 @@ void loop() {
   // Transition to OBSTACLE_AVOIDANCE only once at startup
   if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
       changeState(robot, OBSTACLE_AVOIDANCE);
+      robot.currentNavMode = AUTONOMOUS_CONTROL; // Set navigation mode to autonomous
       robot.initialActionTaken = true;
   }
 

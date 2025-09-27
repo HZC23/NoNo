@@ -16,10 +16,12 @@ bool isObstacleDetected(Robot& robot);
 // --- IMPLEMENTATIONS ---
 
 inline bool isObstacleDetected(Robot& robot) {
-    bool ultraSonicObstacle = (robot.dusm < DMARGE && robot.dusm > 0);
-    bool laserObstacle = (robot.distanceLaser < DMARGE && robot.distanceLaser > 0);
-    bool laserTooClose = (robot.distanceLaser < 10 && robot.distanceLaser > 0); // 100mm = 10cm
-    return ultraSonicObstacle || laserObstacle || laserTooClose;
+    bool ultraSonicObstacle = (robot.dusm < ULTRASONIC_OBSTACLE_THRESHOLD_CM && robot.dusm > 0);
+    bool laserObstacle = (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0);
+    
+    robot.obstacleDetectedByLaser = laserObstacle; // Set the flag if laser detects too close
+
+    return ultraSonicObstacle || laserObstacle;
 }
 
 inline void changeState(Robot& robot, RobotState newState) {
@@ -83,16 +85,26 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case MANUAL_BACKWARD:
+      if (isObstacleDetected(robot)) {
+        pwmA = 0;
+        pwmB = 0;
+        changeState(robot, IDLE); // Stop and go to IDLE if obstacle detected
+      } else {
         pwmA = -robot.vitesseCible;
         pwmB = -robot.vitesseCible;
-        changeState(robot, IDLE); // Return to IDLE, requires continuous command
-        break;
+      }
+      break;
 
     case MANUAL_FORWARD:
+      if (isObstacleDetected(robot)) {
+        pwmA = 0;
+        pwmB = 0;
+        changeState(robot, IDLE); // Stop and go to IDLE if obstacle detected
+      } else {
         pwmA = robot.vitesseCible;
         pwmB = robot.vitesseCible;
-        changeState(robot, IDLE); // Return to IDLE, requires continuous command
-        break;
+      }
+      break;
       
     case TURNING_LEFT:
       if (!robot.actionStarted) {
@@ -119,9 +131,14 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case MANUAL_TURNING_LEFT:
-      pwmA = VITESSE_ROTATION;
-      pwmB = -VITESSE_ROTATION;
-      // Removed: changeState(robot, IDLE); // Robot stays in this state as long as command is received
+      if (isObstacleDetected(robot)) {
+        pwmA = 0;
+        pwmB = 0;
+        changeState(robot, IDLE); // Stop and go to IDLE if obstacle detected
+      } else {
+        pwmA = VITESSE_ROTATION;
+        pwmB = -VITESSE_ROTATION;
+      }
       break;
        
     case TURNING_RIGHT:
@@ -149,9 +166,14 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case MANUAL_TURNING_RIGHT:
-      pwmA = -VITESSE_ROTATION;
-      pwmB = VITESSE_ROTATION;
-      // Removed: changeState(robot, IDLE); // Robot stays in this state as long as command is received
+      if (isObstacleDetected(robot)) {
+        pwmA = 0;
+        pwmB = 0;
+        changeState(robot, IDLE); // Stop and go to IDLE if obstacle detected
+      } else {
+        pwmA = -VITESSE_ROTATION;
+        pwmB = VITESSE_ROTATION;
+      }
       break;
       
     case FOLLOW_HEADING:
@@ -175,8 +197,8 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case OBSTACLE_AVOIDANCE:
-      // If the front switch is still pressed, immediately back up
-      if (digitalRead(INTERUPTPIN) == LOW) {
+      // If the front switch is still pressed AND the obstacle was NOT detected by laser, immediately back up
+      if (digitalRead(INTERUPTPIN) == LOW && !robot.obstacleDetectedByLaser) {
           changeState(robot, AVOID_MANEUVER);
           return;
       }
@@ -184,6 +206,31 @@ inline void updateMotorControl(Robot& robot) {
       if (!robot.actionStarted) {
         // Initial setup for obstacle avoidance
         Arret(); // Stop the robot
+
+        // Quick side check with laser
+        tourelle.write(70, 90); // Move turret to 70 degrees (left side)
+        delay(200); // Give turret time to move
+        if (vl53.dataReady()) {
+          robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
+        }
+        if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
+          if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
+          changeState(robot, AVOID_MANEUVER);
+          return;
+        }
+        tourelle.write(110, 90); // Move turret to 110 degrees (right side)
+        delay(200); // Give turret time to move
+        if (vl53.dataReady()) {
+          robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
+        }
+        if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
+          if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
+          changeState(robot, AVOID_MANEUVER);
+          return;
+        }
+        tourelle.write(SCAN_CENTER_ANGLE, 90); // Return turret to center
+        delay(200); // Give turret time to move
+
         robot.currentScanAngleH = SCAN_H_START_ANGLE;
         robot.bestAvoidAngle = SCAN_CENTER_ANGLE; // Default to center
         for (int i = 0; i <= 180; i++) {
@@ -192,7 +239,7 @@ inline void updateMotorControl(Robot& robot) {
         tourelle.write(robot.currentScanAngleH, 90); // Start scan
         robot.lastActionTime = millis();
         robot.actionStarted = true;
-        if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Starting scan.");
+        if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Starting full scan.");
       }
 
       if (millis() - robot.lastActionTime >= SCAN_DELAY_MS) {
@@ -215,7 +262,7 @@ inline void updateMotorControl(Robot& robot) {
             }
           }
 
-          if (maxDistance > DMARGE) { // Found a clear path
+          if (maxDistance > LASER_OBSTACLE_THRESHOLD_CM) { // Found a clear path
             if (DEBUG_MODE) {
               Serial.print("OBSTACLE_AVOIDANCE: Clear path at ");
               Serial.print(robot.bestAvoidAngle);

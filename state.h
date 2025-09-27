@@ -37,6 +37,7 @@ struct Robot {
     // Sensors
     int dusm = 0; // Distance UltraSon Mesuree
     int distanceLaser = 0;
+    bool obstacleDetectedByLaser = false;
 
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
@@ -71,5 +72,6 @@ extern Servo Servodirection;
 extern LSM303 compass;
 extern DFRobot_RGBLCD1602 lcd;
 extern Tourelle tourelle; // Added for Tourelle control
+extern VL53L1X vl53;
 
 #endif // STATE_H

@@ -80,10 +80,10 @@ inline void Terminal(Robot& robot) {
                                 // Standard movement commands
                                 if (strcasecmp_local(value, "FWD") == 0) {
                                     robot.vitesseCible = VITESSE_MOYENNE;
-                                    changeState(robot, MOVING_FORWARD);
+                                    changeState(robot, MANUAL_FORWARD);
                                 } else if (strcasecmp_local(value, "BWD") == 0) {
                                     robot.vitesseCible = VITESSE_LENTE;
-                                    changeState(robot, MOVING_BACKWARD);
+                                    changeState(robot, MANUAL_BACKWARD);
                                 } else if (strcasecmp_local(value, "LEFT") == 0) {
                                     changeState(robot, MANUAL_TURNING_LEFT);
                                 } else if (strcasecmp_local(value, "RIGHT") == 0) {
