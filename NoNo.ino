@@ -21,7 +21,7 @@ MX1508 motorB(BIN1, BIN2);
 // Servo Servodirection; // Ackermann steering
 Tourelle tourelle(PINTOURELLE_H, PINTOURELLE_V);
 LSM303 compass;
-DFRobot_RGBLCD1602 lcd(0x60, 16, 2);
+DFRobot_RGBLCD1602 lcd(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS);
 VL53L1X vl53;
 
 // --- GLOBAL STATE OBJECT ---
@@ -34,7 +34,7 @@ void handleScanning(Robot& robot);
 // --- SETUP ---
 void setup() {
     digitalWrite(PIN_PHARE, HIGH); // Turn on headlight at the beginning of setup
-    Serial.begin(115200);
+    Serial.begin(SERIAL_BAUD_RATE);
     Wire.begin();
     lcd.init();
     if (DEBUG_MODE) Serial.println("--- NONO STARTUP ---");
@@ -47,8 +47,8 @@ void setup() {
         while(1);
     }
     if (DEBUG_MODE) Serial.println("VL53L1X Initialized.");
-    vl53.setMeasurementTimingBudget(50000);
-    vl53.startContinuous(50);
+    vl53.setMeasurementTimingBudget(VL53L1X_TIMING_BUDGET_US);
+    vl53.startContinuous(VL53L1X_INTER_MEASUREMENT_PERIOD_MS);
 
     setLcdText(robot, LCD_STARTUP_MESSAGE_1);
 
@@ -69,11 +69,16 @@ void setup() {
     sensor_init();
     compass_init(robot);
     robot.compassInverted = COMPASS_IS_INVERTED; // Apply inversion setting from config
+
+    // Initialize configurable parameters
+    robot.speedAvg = VITESSE_MOYENNE;
+    robot.speedSlow = VITESSE_LENTE;
+
     // Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
     // Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
     #if ENABLE_TOWER
       tourelle.attach();
-      tourelle.write(SCAN_CENTER_ANGLE, 90);
+      tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
     #endif
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
@@ -96,7 +101,7 @@ void loop() {
   sensor_update_task(robot);
   robot.cap = getCalibratedHeading(robot);
   if (vl53.dataReady()) {
-    robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
+    robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
   }
 
   // Run state machines
@@ -126,7 +131,7 @@ void loop() {
 void handleScanning(Robot& robot) {
   if (!robot.actionStarted) {
     robot.currentScanAngleH = SCAN_H_START_ANGLE;
-    tourelle.write(robot.currentScanAngleH, 90); // Start scan at 90 deg vertical
+    tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE); // Start scan at 90 deg vertical
     robot.lastScanTime = millis();
     robot.actionStarted = true;
     if (DEBUG_MODE) Serial.println(F("Starting unified scan."));
@@ -145,11 +150,11 @@ void handleScanning(Robot& robot) {
 
     robot.currentScanAngleH += SCAN_H_STEP;
     if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
-      tourelle.write(SCAN_CENTER_ANGLE, 90); // Center turret when done
+      tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Center turret when done
       changeState(robot, IDLE); // Scan complete
       if (DEBUG_MODE) Serial.println(F("Scan complete."));
     } else {
-      tourelle.write(robot.currentScanAngleH, 90);
+      tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE);
     }
   }
 }

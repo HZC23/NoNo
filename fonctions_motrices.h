@@ -33,6 +33,7 @@ inline void changeState(Robot& robot, RobotState newState) {
   
   if (newState == OBSTACLE_AVOIDANCE) {
     robot.consecutiveAvoidManeuvers++;
+    robot.obstacleAvoidanceState = AVOID_START; // Reset the sub-state
   } else {
     robot.consecutiveAvoidManeuvers = 0; // Reset counter on other state changes
   }
@@ -49,8 +50,8 @@ inline void changeState(Robot& robot, RobotState newState) {
 }
 
 inline void Arret() {
-  motorA.motorBrake(255);
-  motorB.motorBrake(255);
+  motorA.motorBrake(PWM_MAX);
+  motorB.motorBrake(PWM_MAX);
 }
 
 inline void updateMotorControl(Robot& robot) {
@@ -113,7 +114,7 @@ inline void updateMotorControl(Robot& robot) {
       }
       
       // Timeout after 5 seconds of turning
-      if (millis() - robot.lastActionTime > 5000) {
+      if (millis() - robot.lastActionTime > TURNING_TIMEOUT_MS) {
         if (DEBUG_MODE) Serial.println("TURNING_LEFT: Timeout");
         changeState(robot, MOVING_FORWARD); 
         break;
@@ -148,7 +149,7 @@ inline void updateMotorControl(Robot& robot) {
       }
       
       // Timeout after 5 seconds of turning
-      if (millis() - robot.lastActionTime > 5000) {
+      if (millis() - robot.lastActionTime > TURNING_TIMEOUT_MS) {
         if (DEBUG_MODE) Serial.println("TURNING_RIGHT: Timeout");
         changeState(robot, MOVING_FORWARD); 
         break;
@@ -197,62 +198,101 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case OBSTACLE_AVOIDANCE:
-      // If the front switch is still pressed AND the obstacle was NOT detected by laser, immediately back up
-      if (digitalRead(INTERUPTPIN) == LOW && !robot.obstacleDetectedByLaser) {
-          changeState(robot, AVOID_MANEUVER);
-          return;
-      }
+      switch (robot.obstacleAvoidanceState) {
+        case AVOID_START:
+          Arret();
+          // If the front switch is still pressed AND the obstacle was NOT detected by laser, immediately back up
+          if (digitalRead(INTERUPTPIN) == LOW && !robot.obstacleDetectedByLaser) {
+              robot.obstacleAvoidanceState = AVOID_BACKUP;
+          } else {
+              robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_LEFT;
+          }
+          break;
 
-      if (!robot.actionStarted) {
-        // Initial setup for obstacle avoidance
-        Arret(); // Stop the robot
+        case AVOID_QUICK_SCAN_LEFT:
+          tourelle.write(QUICK_SCAN_LEFT_ANGLE, NEUTRE_TOURELLE); // Move turret to 70 degrees (left side)
+          robot.turretMoveStartTime = millis();
+          robot.obstacleAvoidanceState = AVOID_WAIT_FOR_LEFT_SCAN;
+          break;
 
-        // Quick side check with laser
-        tourelle.write(70, 90); // Move turret to 70 degrees (left side)
-        delay(200); // Give turret time to move
-        if (vl53.dataReady()) {
-          robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
-        }
-        if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
-          if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
-          changeState(robot, AVOID_MANEUVER);
-          return;
-        }
-        tourelle.write(110, 90); // Move turret to 110 degrees (right side)
-        delay(200); // Give turret time to move
-        if (vl53.dataReady()) {
-          robot.distanceLaser = vl53.readRangeContinuousMillimeters() / 10;
-        }
-        if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
-          if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
-          changeState(robot, AVOID_MANEUVER);
-          return;
-        }
-        tourelle.write(SCAN_CENTER_ANGLE, 90); // Return turret to center
-        delay(200); // Give turret time to move
+        case AVOID_WAIT_FOR_LEFT_SCAN:
+          if (millis() - robot.turretMoveStartTime > TURRET_MOVE_TIME_MS) {
+            if (vl53.dataReady()) {
+              robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
+            }
+            if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
+              if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
+              robot.obstacleAvoidanceState = AVOID_BACKUP;
+            } else {
+              robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_RIGHT;
+            }
+          }
+          break;
 
-        robot.currentScanAngleH = SCAN_H_START_ANGLE;
-        robot.bestAvoidAngle = SCAN_CENTER_ANGLE; // Default to center
-        for (int i = 0; i <= 180; i++) {
-          robot.scanDistances[i] = 0; // Initialize scan distances
-        }
-        tourelle.write(robot.currentScanAngleH, 90); // Start scan
-        robot.lastActionTime = millis();
-        robot.actionStarted = true;
-        if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Starting full scan.");
-      }
+        case AVOID_QUICK_SCAN_RIGHT:
+          tourelle.write(QUICK_SCAN_RIGHT_ANGLE, NEUTRE_TOURELLE); // Move turret to 110 degrees (right side)
+          robot.turretMoveStartTime = millis();
+          robot.obstacleAvoidanceState = AVOID_WAIT_FOR_RIGHT_SCAN;
+          break;
 
-      if (millis() - robot.lastActionTime >= SCAN_DELAY_MS) {
-        robot.lastActionTime = millis();
+        case AVOID_WAIT_FOR_RIGHT_SCAN:
+          if (millis() - robot.turretMoveStartTime > TURRET_MOVE_TIME_MS) {
+            if (vl53.dataReady()) {
+              robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
+            }
+            if (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0) {
+              if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Side obstacle detected, backing up.");
+              robot.obstacleAvoidanceState = AVOID_BACKUP;
+            } else {
+              robot.obstacleAvoidanceState = AVOID_CENTER_TURRET;
+            }
+          }
+          break;
 
-        // Read distance at current angle
-        int currentDistance = robot.distanceLaser > 0 ? robot.distanceLaser : robot.dusm;
-        if (currentDistance > 0) {
-          robot.scanDistances[robot.currentScanAngleH] = currentDistance;
-        }
+        case AVOID_CENTER_TURRET:
+          tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Return turret to center
+          robot.turretMoveStartTime = millis();
+          robot.obstacleAvoidanceState = AVOID_WAIT_FOR_CENTER;
+          break;
 
-        robot.currentScanAngleH += SCAN_H_STEP;
-        if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
+        case AVOID_WAIT_FOR_CENTER:
+          if (millis() - robot.turretMoveStartTime > TURRET_MOVE_TIME_MS) {
+            robot.obstacleAvoidanceState = AVOID_FULL_SCAN_START;
+          }
+          break;
+
+        case AVOID_FULL_SCAN_START:
+          robot.currentScanAngleH = SCAN_H_START_ANGLE;
+          robot.bestAvoidAngle = SCAN_CENTER_ANGLE; // Default to center
+          for (int i = 0; i < SCAN_DISTANCE_ARRAY_SIZE; i++) {
+            robot.scanDistances[i] = 0; // Initialize scan distances
+          }
+          tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE); // Start scan
+          robot.lastActionTime = millis();
+          robot.obstacleAvoidanceState = AVOID_FULL_SCAN_STEP;
+          if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: Starting full scan.");
+          break;
+
+        case AVOID_FULL_SCAN_STEP:
+          if (millis() - robot.lastActionTime >= SCAN_DELAY_MS) {
+            robot.lastActionTime = millis();
+
+            // Read distance at current angle
+            int currentDistance = robot.distanceLaser > 0 ? robot.distanceLaser : robot.dusm;
+            if (currentDistance > 0) {
+              robot.scanDistances[robot.currentScanAngleH] = currentDistance;
+            }
+
+            robot.currentScanAngleH += SCAN_H_STEP;
+            if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
+              robot.obstacleAvoidanceState = AVOID_FULL_SCAN_FINISH;
+            } else {
+              tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE); // Continue scanning
+            }
+          }
+          break;
+
+        case AVOID_FULL_SCAN_FINISH:
           // Scan complete, analyze results
           int maxDistance = 0;
           for (int i = SCAN_H_START_ANGLE; i <= SCAN_H_END_ANGLE; i += SCAN_H_STEP) {
@@ -289,36 +329,34 @@ inline void updateMotorControl(Robot& robot) {
               changeState(robot, MOVING_FORWARD);
             }
             robot.vitesseCible = VITESSE_LENTE;
-            tourelle.write(SCAN_CENTER_ANGLE, 90); // Center turret
+            tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Center turret
           } else { // No clear path found, initiate backup maneuver
             if (DEBUG_MODE) Serial.println("OBSTACLE_AVOIDANCE: No clear path, backing up.");
-            changeState(robot, AVOID_MANEUVER);
+            robot.obstacleAvoidanceState = AVOID_BACKUP;
           }
-        } else {
-          tourelle.write(robot.currentScanAngleH, 90); // Continue scanning
-        }
-      }
-      break;
+          break;
 
-    case AVOID_MANEUVER:
-      // Back up for a short duration, then re-scan.
-      if (!robot.actionStarted) {
-        robot.lastActionTime = millis();
-        robot.actionStarted = true;
-        if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Starting backup.");
-      }
+        case AVOID_BACKUP:
+          // Back up for a short duration, then re-scan.
+          if (!robot.actionStarted) {
+            robot.lastActionTime = millis();
+            robot.actionStarted = true;
+            if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Starting backup.");
+          }
 
-      if (millis() - robot.lastActionTime < 1000) { // Back up for 1 second
-        pwmA = -VITESSE_LENTE;
-        pwmB = -VITESSE_LENTE;
-      } else {
-        if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Backup complete. Rescanning.");
-        if (robot.consecutiveAvoidManeuvers >= MAX_CONSECUTIVE_AVOID_MANEUVERS) {
-          if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Max consecutive avoid maneuvers reached. Going IDLE.");
-          changeState(robot, IDLE); // Give up and go IDLE
-        } else {
-          changeState(robot, OBSTACLE_AVOIDANCE); // Now try scanning again
-        }
+          if (millis() - robot.lastActionTime < AVOID_BACKUP_DURATION_MS) { // Back up for 1 second
+            pwmA = -VITESSE_LENTE;
+            pwmB = -VITESSE_LENTE;
+          } else {
+            if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Backup complete. Rescanning.");
+            if (robot.consecutiveAvoidManeuvers >= MAX_CONSECUTIVE_AVOID_MANEUVERS) {
+              if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Max consecutive avoid maneuvers reached. Going IDLE.");
+              changeState(robot, IDLE); // Give up and go IDLE
+            } else {
+              changeState(robot, OBSTACLE_AVOIDANCE); // Now try scanning again
+            }
+          }
+          break;
       }
       break;
 
@@ -335,8 +373,6 @@ inline void updateMotorControl(Robot& robot) {
       }
       break;
 
-    
-
     case SENTRY_MODE:
       pwmA = 0;
       pwmB = 0;
@@ -349,12 +385,12 @@ inline void updateMotorControl(Robot& robot) {
       pwmA = 0;
       pwmB = 0;
       // Flash headlight for 5 seconds
-      if (millis() - robot.lastActionTime > 5000) {
+      if (millis() - robot.lastActionTime > SENTRY_ALARM_DURATION_MS) {
         PhareEteint();
         changeState(robot, SENTRY_MODE);
       } else {
         // Flash every 250ms
-        if ((millis() / 250) % 2 == 0) {
+        if ((millis() / SENTRY_FLASH_INTERVAL_MS) % SENTRY_ALARM_BLINK_DIVISOR == 0) {
           PhareAllume();
         } else {
           PhareEteint();
@@ -370,8 +406,8 @@ default:
   
   pwmB = (int)(pwmB * CALIBRATION_MOTEUR_B);
   
-  motorA.motorGo(constrain(pwmA, -255, 255));
-  motorB.motorGo(constrain(pwmB, -255, 255));
+  motorA.motorGo(constrain(pwmA, -PWM_MAX, PWM_MAX));
+  motorB.motorGo(constrain(pwmB, -PWM_MAX, PWM_MAX));
 }
 
 inline float calculateHeadingError(float target, float current) {

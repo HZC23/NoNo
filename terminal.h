@@ -19,7 +19,6 @@ inline int strcasecmp_local(const char *s1, const char *s2) {
 }
 
 // --- Defines for the command parser ---
-#define CMD_BUFFER_SIZE 64 // Maximum command length (e.g., "CMD:CALIBRATE:COMPASS")
 #define CMD_DELIMITER ":"
 
 /**
@@ -79,10 +78,8 @@ inline void Terminal(Robot& robot) {
                             } else {
                                 // Standard movement commands
                                 if (strcasecmp_local(value, "FWD") == 0) {
-                                    robot.vitesseCible = VITESSE_MOYENNE;
                                     changeState(robot, MANUAL_FORWARD);
                                 } else if (strcasecmp_local(value, "BWD") == 0) {
-                                    robot.vitesseCible = VITESSE_LENTE;
                                     changeState(robot, MANUAL_BACKWARD);
                                 } else if (strcasecmp_local(value, "LEFT") == 0) {
                                     changeState(robot, MANUAL_TURNING_LEFT);
@@ -95,9 +92,19 @@ inline void Terminal(Robot& robot) {
                             }
                         } else if (strcasecmp_local(action, "SPEED") == 0) {
                             robot.vitesseCible = constrain(atoi(value), 0, 255);
+                        } else if (strcasecmp_local(action, "SET") == 0) {
+                            char* paramName = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
+                            char* paramValue = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
+                            if (paramName != NULL && paramValue != NULL) {
+                                if (strcasecmp_local(paramName, "SPEED_AVG") == 0) {
+                                    robot.speedAvg = atoi(paramValue);
+                                } else if (strcasecmp_local(paramName, "SPEED_SLOW") == 0) {
+                                    robot.speedSlow = atoi(paramValue);
+                                }
+                            }
                         } else if (strcasecmp_local(action, "GOTO") == 0) {
                             robot.Ncap = atoi(value);
-                            robot.vitesseCible = VITESSE_MOYENNE;
+                            robot.vitesseCible = robot.speedAvg;
                             changeState(robot, FOLLOW_HEADING);
                         } else if (strcasecmp_local(action, "TURN") == 0) {
                             robot.capCibleRotation = atof(value);
@@ -127,7 +134,7 @@ inline void Terminal(Robot& robot) {
                         } else if (strcasecmp_local(action, "MODE") == 0) {
                             if (strcasecmp_local(value, "AVOID") == 0) {
                                 robot.Ncap = robot.cap; // Set target to current heading
-                                robot.vitesseCible = VITESSE_MOYENNE;
+                                robot.vitesseCible = robot.speedAvg;
                                 changeState(robot, SMART_AVOIDANCE);
                             } else if (strcasecmp_local(value, "SENTRY") == 0) {
                                 changeState(robot, SENTRY_MODE);
@@ -135,7 +142,7 @@ inline void Terminal(Robot& robot) {
                                 changeState(robot, IDLE);
                             }
                         } else if (strcasecmp_local(action, "LCD") == 0) {
-                            if (strlen(value) > 32) {
+                            if (strlen(value) > MAX_LCD_TEXT_LENGTH) {
                                 if (DEBUG_MODE) Serial.println(F("Error: LCD text too long (max 32 chars)"));
                             } else {
                                 setLcdText(robot, String(value));

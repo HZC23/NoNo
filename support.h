@@ -28,8 +28,8 @@ inline int readBatteryPercentage() {
   float batteryVoltage = pinVoltage * 1.68;
 
   // Convert voltage to percentage (assuming 8.4V is 100% and 6.0V is 0% for a 2S LiPo)
-  const float MAX_VOLTAGE = 8.4;
-  const float MIN_VOLTAGE = 6.0;
+  const float MAX_VOLTAGE = MAX_BATTERY_VOLTAGE;
+  const float MIN_VOLTAGE = MIN_BATTERY_VOLTAGE;
   
   float percentage = ((batteryVoltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE)) * 100.0;
   

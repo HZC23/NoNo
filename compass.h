@@ -26,25 +26,31 @@ void calibrateCompass(Robot& robot);
 void saveCompassCalibration(const Robot& robot);
 void loadCompassCalibration(Robot& robot);
 bool isEEPROMDataValid();
+float calculateHeading(float y, float x); // Overloaded
 float calculateHeading(const LSM303& compass);
 void displayCompassInfo(Robot& robot);
 
 
 // --- IMPLEMENTATIONS ---
 
-inline float calculateHeading(const LSM303& compass) {
-  float heading = (atan2(compass.m.y, compass.m.x) * 180) / PI;
+// Overloaded function to calculate heading from y and x components
+inline float calculateHeading(float y, float x) {
+  float heading = (atan2(y, x) * 180) / PI;
   if (heading < 0) {
     heading += 360;
   }
   return heading;
 }
 
+inline float calculateHeading(const LSM303& compass) {
+  return calculateHeading(compass.m.y, compass.m.x);
+}
+
 inline void compass_init(Robot& robot) {
     if (DEBUG_MODE) Serial.println("Initialisation du compas...");
     if (!compass.init()) {
         if (DEBUG_MODE) Serial.println("ERREUR: Impossible d'initialiser le compas!");
-        setLcdText("ERREUR COMPAS");
+        setLcdText(robot, "ERREUR COMPAS");
         robot.compassInitialized = false;
     } else {
         if (DEBUG_MODE) Serial.println("Compas initialise avec succes!");
@@ -63,59 +69,55 @@ inline float getCalibratedHeading(Robot& robot) {
         return 0.0;
     }
 
+    float heading;
     if (robot.compassCalibrated) {
+        // Correct for hard-iron distortion
         float corrected_x = compass.m.x - (robot.magMin.x + robot.magMax.x) / 2.0;
         float corrected_y = compass.m.y - (robot.magMin.y + robot.magMax.y) / 2.0;
 
+        // Correct for soft-iron distortion
         float avg_delta_x = (robot.magMax.x - robot.magMin.x) / 2.0;
         float avg_delta_y = (robot.magMax.y - robot.magMin.y) / 2.0;
         
         if (avg_delta_x == 0 || avg_delta_y == 0) {
-            return calculateHeading(compass);
+            heading = calculateHeading(compass);
+        } else {
+            float avg_delta = (avg_delta_x + avg_delta_y) / 2.0;
+            float scaled_x = corrected_x * (avg_delta / avg_delta_x);
+            float scaled_y = corrected_y * (avg_delta / avg_delta_y);
+            heading = calculateHeading(scaled_y, scaled_x);
         }
-
-        float avg_delta = (avg_delta_x + avg_delta_y) / 2.0;
-        float scaled_x = corrected_x * (avg_delta / avg_delta_x);
-        float scaled_y = corrected_y * (avg_delta / avg_delta_y);
-
-        float heading = (atan2(scaled_y, scaled_x) * 180) / PI;
-        if (heading < 0) {
-            heading += 360;
-        }
-        
-        if (robot.compassInverted) {
-            heading += 180.0;
-            if (heading >= 360.0) {
-                heading -= 360.0;
-            }
-        }
-        // Apply fine-tuning offset
-        heading += robot.compassOffset;
-
-        // Normalize heading to 0-359.9 degrees
-        while (heading < 0.0) heading += 360.0;
-        while (heading >= 360.0) heading -= 360.0;
-        return heading;
     } else {
-        return calculateHeading(compass);
+        heading = calculateHeading(compass);
     }
+
+    // Apply inversion and fine-tuning offset
+    if (robot.compassInverted) {
+        heading += 180.0;
+    }
+    heading += robot.compassOffset;
+
+    // Normalize heading to 0-359.9 degrees
+    while (heading < 0.0) heading += 360.0;
+    while (heading >= 360.0) heading -= 360.0;
+    
+    return heading;
 }
 
 inline void calibrateCompass(Robot& robot) {
     static unsigned long startTime = 0;
-    const unsigned long CALIBRATION_DURATION_MS = 15000;
     static bool calibrationStarted = false;
 
     if (!calibrationStarted) {
         Serial.println("=== CALIBRATION DU COMPAS (360 DEGRES) ===");
-        robot.magMin = {32767, 32767, 32767};
-        robot.magMax = {-32768, -32768, -32768};
+        robot.magMin = {COMPASS_MAX_INT16, COMPASS_MAX_INT16, COMPASS_MAX_INT16};
+        robot.magMax = {COMPASS_MIN_INT16, COMPASS_MIN_INT16, COMPASS_MIN_INT16};
         startTime = millis();
         calibrationStarted = true;
-        setLcdText("Calib 360...");
+        setLcdText(robot, "Calib 360...");
     }
 
-    if (millis() - startTime < CALIBRATION_DURATION_MS) {
+    if (millis() - startTime < COMPASS_CALIBRATION_DURATION_MS) {
         compass.read();
         robot.magMin.x = min(robot.magMin.x, compass.m.x);
         robot.magMin.y = min(robot.magMin.y, compass.m.y);
@@ -125,14 +127,14 @@ inline void calibrateCompass(Robot& robot) {
         robot.magMax.z = max(robot.magMax.z, compass.m.z);
     } else {
         Serial.println("=== CALIBRATION TERMINEE ===");
-        if (robot.magMin.x < 32000 && robot.magMax.x > -32000) {
+        if (robot.magMin.x < COMPASS_CALIBRATION_VALIDATION_THRESHOLD && robot.magMax.x > -COMPASS_CALIBRATION_VALIDATION_THRESHOLD) {
             robot.compassCalibrated = true;
             Serial.println("✅ Calibration REUSSIE.");
-            setLcdText("Calib. OK");
+            setLcdText(robot, "Calib. OK");
         } else {
             robot.compassCalibrated = false;
             Serial.println("⚠️ Calibration DEFAILLANTE.");
-            setLcdText("Calib. ECHEC");
+            setLcdText(robot, "Calib. ECHEC");
         }
         saveCompassCalibration(robot);
         calibrationStarted = false;
@@ -179,17 +181,27 @@ inline bool isEEPROMDataValid() {
 inline void displayCompassInfo(Robot& robot) {
     float heading = getCalibratedHeading(robot);
     String direction;
-    if (heading >= 337.5 || heading < 22.5) direction = "N";
-    else if (heading >= 22.5 && heading < 67.5) direction = "NE";
-    else if (heading >= 67.5 && heading < 112.5) direction = "E";
-    else if (heading >= 112.5 && heading < 157.5) direction = "SE";
-    else if (heading >= 157.5 && heading < 202.5) direction = "S";
-    else if (heading >= 202.5 && heading < 247.5) direction = "SO";
-    else if (heading >= 247.5 && heading < 292.5) direction = "O";
-    else direction = "NO";
-    
+
+    if (heading >= CARDINAL_NORTH_LOWER || heading < CARDINAL_NORTH_UPPER) {
+        direction = "N";
+    } else if (heading < CARDINAL_NORTHEAST_UPPER) {
+        direction = "NE";
+    } else if (heading < CARDINAL_EAST_UPPER) {
+        direction = "E";
+    } else if (heading < CARDINAL_SOUTHEAST_UPPER) {
+        direction = "SE";
+    } else if (heading < CARDINAL_SOUTH_UPPER) {
+        direction = "S";
+    } else if (heading < CARDINAL_SOUTHWEST_UPPER) {
+        direction = "SO";
+    } else if (heading < CARDINAL_WEST_UPPER) {
+        direction = "O";
+    } else {
+        direction = "NO";
+    }
+
     String text = direction + " " + String((int)heading) + "deg";
-    setLcdText(text);
+    setLcdText(robot, text);
 }
 
 #endif // COMPASS_H

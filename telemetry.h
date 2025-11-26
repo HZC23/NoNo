@@ -8,7 +8,7 @@
 // Sends the robot's current state as a JSON object over Serial
 inline void sendTelemetry(Robot& robot) {
     // Use a static document to avoid heap allocation in the loop
-    StaticJsonDocument<200> doc;
+    StaticJsonDocument<JSON_DOC_SIZE> doc;
 
     // Get the string representation of the current state
     const char* stateString;
@@ -29,7 +29,6 @@ inline void sendTelemetry(Robot& robot) {
         case FOLLOW_HEADING: stateString = "FOLLOW_HEADING"; break;
         case MAINTAIN_HEADING: stateString = "MAINTAIN_HEADING"; break;
         case OBSTACLE_AVOIDANCE: stateString = "OBSTACLE_AVOIDANCE"; break;
-        case AVOID_MANEUVER: stateString = "AVOID_MANEUVER"; break;
         case SCANNING: stateString = "SCANNING"; break;
         default: stateString = "UNKNOWN"; break;
     }

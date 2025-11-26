@@ -9,18 +9,38 @@
 #include "config.h"
 #include "tourelle.h" // Added for Tourelle class
 
+enum ObstacleAvoidanceState {
+  AVOID_START,
+  AVOID_QUICK_SCAN_LEFT,
+  AVOID_WAIT_FOR_LEFT_SCAN,
+  AVOID_QUICK_SCAN_RIGHT,
+  AVOID_WAIT_FOR_RIGHT_SCAN,
+  AVOID_CENTER_TURRET,
+  AVOID_WAIT_FOR_CENTER,
+  AVOID_FULL_SCAN_START,
+  AVOID_FULL_SCAN_STEP,
+  AVOID_FULL_SCAN_FINISH,
+  AVOID_TURN_TO_BEST_ANGLE,
+  AVOID_BACKUP
+};
+
 // Structure to hold the robot's state
 struct Robot {
     // State Machine
     RobotState currentState = IDLE;
+    ObstacleAvoidanceState obstacleAvoidanceState = AVOID_START;
     NavigationMode currentNavMode = MANUAL_CONTROL;
     unsigned long lastActionTime = 0;
     bool actionStarted = false;
     bool initialActionTaken = false;
     int consecutiveAvoidManeuvers = 0;
+    unsigned long turretMoveStartTime = 0;
+    RobotState nextStateAfterTurretMove = IDLE;
 
     // Motion
     int vitesseCible = 0;
+    int speedAvg = VITESSE_MOYENNE; // Default average speed
+    int speedSlow = VITESSE_LENTE;   // Default slow speed
     bool hasReculed = false;
     bool hasTurned = false;
 
@@ -43,7 +63,7 @@ struct Robot {
     int currentScanAngleH = SCAN_H_START_ANGLE;
     // int currentScanAngleV = SCAN_V_START_ANGLE;
     unsigned long lastScanTime = 0;
-    int scanDistances[181]; // To store distances for angles 0-180
+    int scanDistances[SCAN_DISTANCE_ARRAY_SIZE]; // To store distances for angles 0-180
     int bestAvoidAngle;
 
     // Compass Calibration

@@ -28,7 +28,8 @@
 #define INTERUPTPIN 39 // Broche pour le bouton d'arrêt d'urgence
 #define PIR 40 // Broche pour le capteur de mouvement PIR
 
-// === HARDWARE & BEHAVIOR CONSTANTS ===
+
+#define PWM_MAX 255
 #define ENABLE_LEDS false // Mettre à true lorsque les LEDs sont installées
 #define ENABLE_TOWER true // Mettre à true lorsque la tourelle est installée
 #define NEUTRE_DIRECTION 90
@@ -55,11 +56,63 @@
 #define SCAN_CENTER_ANGLE 90
 #define COMPASS_IS_INVERTED true // Mettre à true si la boussole est montée à l'envers
 
-// === SCANNING CONSTANTS ===
+
+#define SENTRY_ALARM_DURATION_MS 5000
+#define SENTRY_ALARM_BLINK_DIVISOR 2
+#define TURNING_TIMEOUT_MS 5000
+#define AVOID_BACKUP_DURATION_MS 1000
+#define SENTRY_FLASH_INTERVAL_MS 250
+#define TURRET_MOVE_TIME_MS 200
+
+
+#define SCAN_DISTANCE_ARRAY_SIZE 181
 #define SCAN_H_START_ANGLE 10
 #define SCAN_H_END_ANGLE 170
 #define SCAN_H_STEP 10
 #define SCAN_DELAY_MS 200 // Delay between each scan step
+#define QUICK_SCAN_LEFT_ANGLE 70
+#define QUICK_SCAN_RIGHT_ANGLE 110
+
+
+#define MM_TO_CM_DIVISOR 10
+#define VL53L1X_TIMING_BUDGET_US 50000
+#define VL53L1X_INTER_MEASUREMENT_PERIOD_MS 50
+#define MAX_ULTRASONIC_DISTANCE 400 // Max valid distance in cm (e.g., 400cm = 4m)
+#define ULTRASONIC_PING_INTERVAL_MS 60 // Minimum time between pings
+#define ULTRASONIC_PULSE_TIMEOUT_US 30000 // Max wait time for echo in µs (30ms ~ 5m)
+#define ULTRASONIC_TRIGGER_PULSE_LOW_US 2
+#define ULTRASONIC_TRIGGER_PULSE_HIGH_US 10
+#define ULTRASONIC_DURATION_TO_CM_DIVISOR 58
+#define ULTRASONIC_ERROR_VALUE -1
+
+
+// === COMPASS CONSTANTS ===
+#define COMPASS_CALIBRATION_DURATION_MS 15000
+#define COMPASS_CALIBRATION_VALIDATION_THRESHOLD 32000
+#define COMPASS_MIN_INT16 -32768
+#define COMPASS_MAX_INT16 32767
+#define CARDINAL_NORTH_LOWER 337.5
+#define CARDINAL_NORTH_UPPER 22.5
+#define CARDINAL_NORTHEAST_UPPER 67.5
+#define CARDINAL_EAST_UPPER 112.5
+#define CARDINAL_SOUTHEAST_UPPER 157.5
+#define CARDINAL_SOUTH_UPPER 202.5
+#define CARDINAL_SOUTHWEST_UPPER 247.5
+#define CARDINAL_WEST_UPPER 292.5
+
+// === BATTERY CONSTANTS ===
+#define MAX_BATTERY_VOLTAGE 8.4
+#define MIN_BATTERY_VOLTAGE 6.0
+
+
+#define SERIAL_BAUD_RATE 115200
+#define LCD_I2C_ADDR 0x60
+#define LCD_ROWS 2
+
+#define LCD_LINE_LENGTH 16
+#define JSON_DOC_SIZE 200
+#define CMD_BUFFER_SIZE 64
+#define MAX_LCD_TEXT_LENGTH 32
 
 // === INITIALIZATION ===
 #define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup
@@ -69,15 +122,12 @@
 
 
 // === LCD MESSAGES ===
-#define LCD_STARTUP_MESSAGE_1 "I am NONO"
-#define LCD_STARTUP_MESSAGE_2 "I will show you my skills"
+#define LCD_STARTUP_MESSAGE_1 "Je suis NONO"
+#define LCD_STARTUP_MESSAGE_2 "Paré à exploser...explorer pardon"
 
 #define SCAN_V_START_ANGLE NEUTRE_TOURELLE
 #define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle
 #define SCAN_V_STEP 1 // Not used for now, but good to have
-
-// === SENSOR CONSTANTS ===
-#define MAX_ULTRASONIC_DISTANCE 400 // Max valid distance in cm (e.g., 400cm = 4m)
 
 // === STATE & MODE DEFINITIONS ===
 enum RobotState {
@@ -91,9 +141,10 @@ enum RobotState {
   MANUAL_TURNING_LEFT,
   MANUAL_TURNING_RIGHT,
   OBSTACLE_AVOIDANCE,
+  WAITING_FOR_TURRET,
   FOLLOW_HEADING,
   MAINTAIN_HEADING,
-  AVOID_MANEUVER,
+  
   BACKING_UP_OBSTACLE, // New state for backing up from obstacle
   SCANNING_FOR_PATH,   // New state for scanning for a new path
   TURNING_TO_PATH,     // New state for turning to the new path
