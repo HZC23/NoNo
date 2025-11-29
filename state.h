@@ -42,6 +42,7 @@ struct Robot {
     int speedAvg = VITESSE_MOYENNE; // Default average speed
     int speedSlow = VITESSE_LENTE;   // Default slow speed
     bool hasReculed = false;
+    bool controlInverted = false; // Flag for control inversion
     bool hasTurned = false;
 
     // Navigation
@@ -76,6 +77,8 @@ struct Robot {
 
     // LCD
     String lcdText = "";
+    unsigned long lastLcdUpdateTime = 0;
+    unsigned long lastJokeDisplayTime = 0;
 
     // Profiling
     unsigned long loopStartTime, loopEndTime;

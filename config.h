@@ -100,9 +100,20 @@
 #define CARDINAL_SOUTHWEST_UPPER 247.5
 #define CARDINAL_WEST_UPPER 292.5
 
-// === BATTERY CONSTANTS ===
-#define MAX_BATTERY_VOLTAGE 8.4
-#define MIN_BATTERY_VOLTAGE 6.0
+// === BATTERY CONFIGURATION ===
+#define BATTERY_TYPE_LIPO 0
+#define BATTERY_TYPE_NIMH 1
+
+// Select your battery type here
+#define SELECTED_BATTERY_TYPE BATTERY_TYPE_LIPO
+
+// Voltage for 2S LiPo
+#define LIPO_MAX_VOLTAGE 8.4
+#define LIPO_MIN_VOLTAGE 6.0
+
+// Voltage for 6-cell NiMH (7.2V nominal)
+#define NIMH_MAX_VOLTAGE 8.4 // 1.4V per cell, fully charged
+#define NIMH_MIN_VOLTAGE 6.0 // 1.0V per cell, discharged
 
 
 #define SERIAL_BAUD_RATE 115200
@@ -113,6 +124,8 @@
 #define JSON_DOC_SIZE 200
 #define CMD_BUFFER_SIZE 64
 #define MAX_LCD_TEXT_LENGTH 32
+#define LCD_IDLE_TIMEOUT_MS 5000 // 5 seconds of inactivity before jokes start
+#define LCD_JOKE_INTERVAL_MS 10000 // Change joke every 10 seconds if still idle
 
 // === INITIALIZATION ===
 #define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup

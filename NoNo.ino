@@ -37,6 +37,7 @@ void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
     Wire.begin();
     lcd.init();
+    randomSeed(analogRead(0)); // Initialize random number generator
     if (DEBUG_MODE) Serial.println("--- NONO STARTUP ---");
     startTime = millis(); // Initialize startupTime
 
@@ -50,7 +51,7 @@ void setup() {
     vl53.setMeasurementTimingBudget(VL53L1X_TIMING_BUDGET_US);
     vl53.startContinuous(VL53L1X_INTER_MEASUREMENT_PERIOD_MS);
 
-    setLcdText(robot, LCD_STARTUP_MESSAGE_1);
+    setLcdText(robot, LCD_STARTUP_MESSAGE_1); // Keep the first startup message for a moment
 
     // Init hardware
     pinMode(PIR, INPUT);
@@ -81,14 +82,37 @@ void setup() {
       tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
     #endif
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
-    setLcdText(robot, LCD_STARTUP_MESSAGE_2);
+    // setLcdText(robot, LCD_STARTUP_MESSAGE_2); // This will be handled by updateLcdDisplay
     digitalWrite(PIN_PHARE, LOW); // Turn off headlight at the end of setup
 }
 
 // --- MAIN LOOP ---
+
 void loop() {
+
+  // Check battery level first
+
+  if (readBatteryPercentage() == 0) {
+
+    setLcdText(robot, "Pas de batterie");
+
+    // Optional: Stop the robot completely if battery is dead.
+
+    if(robot.currentState != IDLE) {
+
+      changeState(robot, IDLE); // This will also stop the motors
+
+    }
+
+  }
+
+
+
   // Process incoming commands
+
   Terminal(robot); 
+
+ 
 
   // Transition to OBSTACLE_AVOIDANCE only once at startup
   if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
@@ -118,6 +142,10 @@ void loop() {
       updateMotorControl(robot);
       break;
   }
+
+  // Update LCD display with current status or jokes if idle
+  displayJokesIfIdle(robot);
+  updateLcdDisplay(robot);
 
   // Send telemetry back to the app periodically
   if (millis() - robot.lastReportTime > robot.reportInterval) {
