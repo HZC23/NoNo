@@ -59,6 +59,7 @@ struct Robot {
     int dusm = 0; // Distance UltraSon Mesuree
     int distanceLaser = 0;
     bool obstacleDetectedByLaser = false;
+    bool laserInitialized = false;
 
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
@@ -76,9 +77,10 @@ struct Robot {
     LSM303::vector<int16_t> magMax = {-32768, -32768, -32768};
 
     // LCD
-    String lcdText = "";
+    char lcdText[MAX_LCD_TEXT_LENGTH + 1];
     unsigned long lastLcdUpdateTime = 0;
     unsigned long lastJokeDisplayTime = 0;
+    char musicFileName[64]; // To store the name of the music file to play
 
     // Profiling
     unsigned long loopStartTime, loopEndTime;

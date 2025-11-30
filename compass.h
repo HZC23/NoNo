@@ -180,7 +180,7 @@ inline bool isEEPROMDataValid() {
 
 inline void displayCompassInfo(Robot& robot) {
     float heading = getCalibratedHeading(robot);
-    String direction;
+    const char* direction;
 
     if (heading >= CARDINAL_NORTH_LOWER || heading < CARDINAL_NORTH_UPPER) {
         direction = "N";
@@ -200,8 +200,9 @@ inline void displayCompassInfo(Robot& robot) {
         direction = "NO";
     }
 
-    String text = direction + " " + String((int)heading) + "deg";
-    setLcdText(robot, text);
+    char textBuffer[MAX_LCD_TEXT_LENGTH + 1];
+    snprintf(textBuffer, sizeof(textBuffer), "%s %ddeg", direction, (int)heading);
+    setLcdText(robot, textBuffer);
 }
 
 #endif // COMPASS_H

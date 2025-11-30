@@ -27,11 +27,22 @@ inline int readBatteryPercentage() {
   float pinVoltage = sensorValue * (5.0 / 1023.0);
   float batteryVoltage = pinVoltage * 1.68;
 
-  // Convert voltage to percentage (assuming 8.4V is 100% and 6.0V is 0% for a 2S LiPo)
-  const float MAX_VOLTAGE = MAX_BATTERY_VOLTAGE;
-  const float MIN_VOLTAGE = MIN_BATTERY_VOLTAGE;
-  
-  float percentage = ((batteryVoltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE)) * 100.0;
+  // Convert voltage to percentage based on selected battery type
+  float maxVoltage, minVoltage;
+
+#if SELECTED_BATTERY_TYPE == BATTERY_TYPE_LIPO
+  maxVoltage = LIPO_MAX_VOLTAGE;
+  minVoltage = LIPO_MIN_VOLTAGE;
+#elif SELECTED_BATTERY_TYPE == BATTERY_TYPE_NIMH
+  maxVoltage = NIMH_MAX_VOLTAGE;
+  minVoltage = NIMH_MIN_VOLTAGE;
+#else
+  // Default to LiPo if no type is selected
+  maxVoltage = LIPO_MAX_VOLTAGE;
+  minVoltage = LIPO_MIN_VOLTAGE;
+#endif
+
+  float percentage = ((batteryVoltage - minVoltage) / (maxVoltage - minVoltage)) * 100.0;
   
   // Constrain the value between 0 and 100
   return constrain((int)percentage, 0, 100);

@@ -27,7 +27,8 @@
 #define VBAT A0 // Broche pour la mesure de la tension de la batterie
 #define INTERUPTPIN 39 // Broche pour le bouton d'arrêt d'urgence
 #define PIR 40 // Broche pour le capteur de mouvement PIR
-
+#define SD_CS_PIN 26 // Chip Select pin for SD card module
+#define BUZZER_PIN 6 // Pin for passive buzzer
 
 #define PWM_MAX 255
 #define ENABLE_LEDS false // Mettre à true lorsque les LEDs sont installées
@@ -69,7 +70,7 @@
 #define SCAN_H_START_ANGLE 10
 #define SCAN_H_END_ANGLE 170
 #define SCAN_H_STEP 10
-#define SCAN_DELAY_MS 200 // Delay between each scan step
+#define SCAN_DELAY_MS 100 // Delay between each scan step
 #define QUICK_SCAN_LEFT_ANGLE 70
 #define QUICK_SCAN_RIGHT_ANGLE 110
 
@@ -79,7 +80,7 @@
 #define VL53L1X_INTER_MEASUREMENT_PERIOD_MS 50
 #define MAX_ULTRASONIC_DISTANCE 400 // Max valid distance in cm (e.g., 400cm = 4m)
 #define ULTRASONIC_PING_INTERVAL_MS 60 // Minimum time between pings
-#define ULTRASONIC_PULSE_TIMEOUT_US 30000 // Max wait time for echo in µs (30ms ~ 5m)
+#define ULTRASONIC_PULSE_TIMEOUT_US 25000 // Max wait time for echo in µs (25ms ~ 4.3m)
 #define ULTRASONIC_TRIGGER_PULSE_LOW_US 2
 #define ULTRASONIC_TRIGGER_PULSE_HIGH_US 10
 #define ULTRASONIC_DURATION_TO_CM_DIVISOR 58
@@ -105,8 +106,7 @@
 #define BATTERY_TYPE_NIMH 1
 
 // Select your battery type here
-#define SELECTED_BATTERY_TYPE BATTERY_TYPE_LIPO
-
+#define SELECTED_BATTERY_TYPE 1 // 0 for LiPo, 1 for NiMH
 // Voltage for 2S LiPo
 #define LIPO_MAX_VOLTAGE 8.4
 #define LIPO_MIN_VOLTAGE 6.0
@@ -125,7 +125,7 @@
 #define CMD_BUFFER_SIZE 64
 #define MAX_LCD_TEXT_LENGTH 32
 #define LCD_IDLE_TIMEOUT_MS 5000 // 5 seconds of inactivity before jokes start
-#define LCD_JOKE_INTERVAL_MS 10000 // Change joke every 10 seconds if still idle
+#define LCD_JOKE_INTERVAL_MS 5000 // Change joke every 5 seconds if still idle
 
 // === INITIALIZATION ===
 #define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup
@@ -135,12 +135,16 @@
 
 
 // === LCD MESSAGES ===
-#define LCD_STARTUP_MESSAGE_1 "Je suis NONO"
+#define LCD_STARTUP_MESSAGE_1 "Je suis Nono"
 #define LCD_STARTUP_MESSAGE_2 "Paré à exploser...explorer pardon"
 
 #define SCAN_V_START_ANGLE NEUTRE_TOURELLE
 #define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle
 #define SCAN_V_STEP 1 // Not used for now, but good to have
+
+// === LOOP REGULATOR ===
+#define LOOP_TARGET_FREQUENCY 100 // Target frequency for the main loop in Hz
+#define LOOP_TARGET_PERIOD_MS (1000 / LOOP_TARGET_FREQUENCY)
 
 // === STATE & MODE DEFINITIONS ===
 enum RobotState {
@@ -166,7 +170,8 @@ enum RobotState {
   SCANNING,
   SMART_AVOIDANCE,
   SENTRY_MODE,
-  SENTRY_ALARM
+  SENTRY_ALARM,
+  PLAYING_MUSIC
 };
 
 enum NavigationMode {

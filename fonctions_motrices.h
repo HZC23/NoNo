@@ -17,7 +17,7 @@ bool isObstacleDetected(Robot& robot);
 
 inline bool isObstacleDetected(Robot& robot) {
     bool ultraSonicObstacle = (robot.dusm < ULTRASONIC_OBSTACLE_THRESHOLD_CM && robot.dusm > 0);
-    bool laserObstacle = (robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0);
+    bool laserObstacle = (robot.laserInitialized && robot.distanceLaser < LASER_OBSTACLE_THRESHOLD_CM && robot.distanceLaser > 0);
     
     robot.obstacleDetectedByLaser = laserObstacle; // Set the flag if laser detects too close
 
@@ -38,11 +38,7 @@ inline void changeState(Robot& robot, RobotState newState) {
     robot.consecutiveAvoidManeuvers = 0; // Reset counter on other state changes
   }
 
-  if (newState != AVOID_MANEUVER) {
-    robot.hasReculed = false;
-    robot.hasTurned = false;
-  }
-  
+
   if (DEBUG_MODE) {
     Serial.print("Transition d'état -> ");
     Serial.println(newState);
@@ -67,6 +63,7 @@ inline void updateMotorControl(Robot& robot) {
 
   switch (robot.currentState) {
     case IDLE:
+      tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
       pwmA = 0;
       pwmB = 0;
       break;
@@ -109,6 +106,7 @@ inline void updateMotorControl(Robot& robot) {
       
     case TURNING_LEFT:
       if (!robot.actionStarted) {
+        tourelle.write(135, NEUTRE_TOURELLE); // Regarde à gauche
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -116,6 +114,7 @@ inline void updateMotorControl(Robot& robot) {
       // Timeout after 5 seconds of turning
       if (millis() - robot.lastActionTime > TURNING_TIMEOUT_MS) {
         if (DEBUG_MODE) Serial.println("TURNING_LEFT: Timeout");
+        tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
         changeState(robot, MOVING_FORWARD); 
         break;
       }
@@ -126,6 +125,7 @@ inline void updateMotorControl(Robot& robot) {
       {
           float error = calculateHeadingError(robot.capCibleRotation, getCalibratedHeading(robot));
           if (abs(error) < TOLERANCE_VIRAGE) {
+              tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
               changeState(robot, MOVING_FORWARD);
           }
       }
@@ -144,6 +144,7 @@ inline void updateMotorControl(Robot& robot) {
        
     case TURNING_RIGHT:
       if (!robot.actionStarted) {
+        tourelle.write(45, NEUTRE_TOURELLE); // Regarde à droite
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -151,6 +152,7 @@ inline void updateMotorControl(Robot& robot) {
       // Timeout after 5 seconds of turning
       if (millis() - robot.lastActionTime > TURNING_TIMEOUT_MS) {
         if (DEBUG_MODE) Serial.println("TURNING_RIGHT: Timeout");
+        tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
         changeState(robot, MOVING_FORWARD); 
         break;
       }
@@ -161,6 +163,7 @@ inline void updateMotorControl(Robot& robot) {
       {
           float error = calculateHeadingError(robot.capCibleRotation, getCalibratedHeading(robot));
           if (abs(error) < TOLERANCE_VIRAGE) {
+              tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
               changeState(robot, MOVING_FORWARD);
           }
       }
@@ -341,14 +344,14 @@ inline void updateMotorControl(Robot& robot) {
           if (!robot.actionStarted) {
             robot.lastActionTime = millis();
             robot.actionStarted = true;
-            if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Starting backup.");
+            if (DEBUG_MODE) Serial.println("AVOID_BACKUP: Starting backup.");
           }
 
           if (millis() - robot.lastActionTime < AVOID_BACKUP_DURATION_MS) { // Back up for 1 second
             pwmA = -VITESSE_LENTE;
             pwmB = -VITESSE_LENTE;
           } else {
-            if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Backup complete. Rescanning.");
+            if (DEBUG_MODE) Serial.println("AVOID_BACKUP: Backup complete. Rescanning.");
             if (robot.consecutiveAvoidManeuvers >= MAX_CONSECUTIVE_AVOID_MANEUVERS) {
               if (DEBUG_MODE) Serial.println("AVOID_MANEUVER: Max consecutive avoid maneuvers reached. Going IDLE.");
               changeState(robot, IDLE); // Give up and go IDLE
@@ -405,6 +408,12 @@ default:
   }
   
   pwmB = (int)(pwmB * CALIBRATION_MOTEUR_B);
+
+  // Apply control inversion if enabled
+  if (robot.controlInverted) {
+    pwmA *= -1;
+    pwmB *= -1;
+  }
   
   motorA.motorGo(constrain(pwmA, -PWM_MAX, PWM_MAX));
   motorB.motorGo(constrain(pwmB, -PWM_MAX, PWM_MAX));

@@ -78,12 +78,16 @@ inline void Terminal(Robot& robot) {
                             } else {
                                 // Standard movement commands
                                 if (strcasecmp_local(value, "FWD") == 0) {
+                                    robot.vitesseCible = robot.speedAvg;
                                     changeState(robot, MANUAL_FORWARD);
                                 } else if (strcasecmp_local(value, "BWD") == 0) {
+                                    robot.vitesseCible = robot.speedAvg;
                                     changeState(robot, MANUAL_BACKWARD);
                                 } else if (strcasecmp_local(value, "LEFT") == 0) {
+                                    robot.vitesseCible = robot.speedAvg;
                                     changeState(robot, MANUAL_TURNING_LEFT);
                                 } else if (strcasecmp_local(value, "RIGHT") == 0) {
+                                    robot.vitesseCible = robot.speedAvg;
                                     changeState(robot, MANUAL_TURNING_RIGHT);
                                 } else if (strcasecmp_local(value, "STOP") == 0) {
                                     robot.vitesseCible = 0;
@@ -100,6 +104,12 @@ inline void Terminal(Robot& robot) {
                                     robot.speedAvg = atoi(paramValue);
                                 } else if (strcasecmp_local(paramName, "SPEED_SLOW") == 0) {
                                     robot.speedSlow = atoi(paramValue);
+                                } else if (strcasecmp_local(paramName, "CONTROL_INVERTED") == 0) {
+                                    if (strcasecmp_local(paramValue, "TRUE") == 0) {
+                                        robot.controlInverted = true;
+                                    } else if (strcasecmp_local(paramValue, "FALSE") == 0) {
+                                        robot.controlInverted = false;
+                                    }
                                 }
                             }
                         } else if (strcasecmp_local(action, "GOTO") == 0) {
@@ -124,9 +134,18 @@ inline void Terminal(Robot& robot) {
                             if (strcasecmp_local(value, "START") == 0) {
                                 changeState(robot, SCANNING);
                             }
+                        } else if (strcasecmp_local(action, "STEER") == 0) {
+                            int angle = atoi(value);
+                            // Constrain angle to valid servo range (0-180)
+                            angle = constrain(angle, 0, 180);
+                            Servodirection.write(angle);
+                            if (DEBUG_MODE) {
+                                Serial.print(F("Steering servo set to angle: "));
+                                Serial.println(angle);
+                            }
                         } else if (strcasecmp_local(action, "COMPASS_OFFSET") == 0) {
                             robot.compassOffset = atof(value);
-                            saveCompassCalibration(robot); // Persist the new offset
+                            // saveCompassCalibration(robot); // Persist the new offset (SD card disabled)
                             if (DEBUG_MODE) {
                                 Serial.print(F("Compass offset set to: "));
                                 Serial.println(robot.compassOffset);
@@ -141,7 +160,24 @@ inline void Terminal(Robot& robot) {
                             } else if (strcasecmp_local(value, "MANUAL") == 0) {
                                 changeState(robot, IDLE);
                             }
-                        } else if (strcasecmp_local(action, "LCD") == 0) {
+                        // } else if (strcasecmp_local(action, "MUSIC") == 0) { // SD card disabled
+                        //     if (strcasecmp_local(value, "PLAY") == 0) {
+                        //         char* musicFilename = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
+                        //         if (musicFilename != NULL) {
+                        //             robot.musicFileName = String(musicFilename); // Store filename for playback
+                        //             changeState(robot, PLAYING_MUSIC);
+                        //         } else {
+                        //             if (DEBUG_MODE) Serial.println(F("Error: Missing music filename"));
+                        //         }
+                        //     }
+                        // } else if (strcasecmp_local(action, "LIST_MUSIC") == 0) { // SD card disabled
+                        //     // No value needed for LIST_MUSIC, but check action
+                        //     listMusicFiles([](const char* filename) {
+                        //         Serial.print(F("RSP:MUSIC_FILE:"));
+                        //         Serial.println(filename);
+                        //     });
+                        // }
+                        else if (strcasecmp_local(action, "LCD") == 0) {
                             if (strlen(value) > MAX_LCD_TEXT_LENGTH) {
                                 if (DEBUG_MODE) Serial.println(F("Error: LCD text too long (max 32 chars)"));
                             } else {
