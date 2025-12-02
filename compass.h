@@ -28,10 +28,32 @@ void loadCompassCalibration(Robot& robot);
 bool isEEPROMDataValid();
 float calculateHeading(float y, float x); // Overloaded
 float calculateHeading(const LSM303& compass);
+float getPitchAngle(Robot& robot); // New prototype for pitch calculation
 void displayCompassInfo(Robot& robot);
 
 
 // --- IMPLEMENTATIONS ---
+
+// New function to calculate pitch angle from accelerometer
+inline float getPitchAngle(Robot& robot) {
+    // Read accelerometer data
+    compass.readAcc();
+
+    // Calculate pitch using atan2 for robustness
+    // The accelerometer measures gravity, so an un-tilted sensor will read (0,0,1g) on Z if Z is up.
+    // For pitch (rotation around X-axis), we use Y and Z components.
+    // Assuming Z is vertical and Y is forward/backward.
+    // Adjust signs based on sensor orientation.
+    // Angle = atan2(y, z) * 180 / PI; (standard formula)
+    // Adjust 90-degree offset if sensor is mounted horizontally
+    float pitch = atan2(compass.a.y, compass.a.z) * 180.0 / PI;
+
+    // Compensate for sensor mounting (e.g., if Z points forward and Y up)
+    // This part often requires calibration or knowing the exact sensor orientation.
+    // For simplicity, let's assume it's mounted such that pitch is directly related to atan2(y, z)
+
+    return pitch;
+}
 
 // Overloaded function to calculate heading from y and x components
 inline float calculateHeading(float y, float x) {
@@ -39,7 +61,7 @@ inline float calculateHeading(float y, float x) {
   if (heading < 0) {
     heading += 360;
   }
-  return heading;
+  return heading;;
 }
 
 inline float calculateHeading(const LSM303& compass) {

@@ -32,7 +32,7 @@
 
 #define PWM_MAX 255
 #define ENABLE_LEDS false // Mettre à true lorsque les LEDs sont installées
-#define ENABLE_TOWER true // Mettre à true lorsque la tourelle est installée
+
 #define NEUTRE_DIRECTION 90
 #define NEUTRE_TOURELLE 90
 #define ULTRASONIC_OBSTACLE_THRESHOLD_CM 10 // Ultrasonic obstacle threshold in cm
@@ -69,7 +69,7 @@
 #define SCAN_DISTANCE_ARRAY_SIZE 181
 #define SCAN_H_START_ANGLE 10
 #define SCAN_H_END_ANGLE 170
-#define SCAN_H_STEP 10
+#define SCAN_H_STEP 5
 #define SCAN_DELAY_MS 100 // Delay between each scan step
 #define QUICK_SCAN_LEFT_ANGLE 70
 #define QUICK_SCAN_RIGHT_ANGLE 110
@@ -115,6 +115,9 @@
 #define NIMH_MAX_VOLTAGE 8.4 // 1.4V per cell, fully charged
 #define NIMH_MIN_VOLTAGE 6.0 // 1.0V per cell, discharged
 
+#define LOW_BATTERY_THRESHOLD 20 // %
+#define ANGLE_TETE_BASSE 120 // "Sad" head angle
+
 
 #define SERIAL_BAUD_RATE 115200
 #define LCD_I2C_ADDR 0x60
@@ -123,7 +126,8 @@
 #define LCD_LINE_LENGTH 16
 #define JSON_DOC_SIZE 200
 #define CMD_BUFFER_SIZE 64
-#define MAX_LCD_TEXT_LENGTH 32
+#define MAX_LCD_TEXT_LENGTH 64
+#define SCROLL_DELAY_MS     2000 // The display time of each page (in ms)
 #define LCD_IDLE_TIMEOUT_MS 5000 // 5 seconds of inactivity before jokes start
 #define LCD_JOKE_INTERVAL_MS 5000 // Change joke every 5 seconds if still idle
 
@@ -141,6 +145,19 @@
 #define SCAN_V_START_ANGLE NEUTRE_TOURELLE
 #define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle
 #define SCAN_V_STEP 1 // Not used for now, but good to have
+
+// === HEAD ANIMATIONS ===
+#define HEAD_SHAKE_NO_ANGLE_EXTREME_LEFT 135
+#define HEAD_SHAKE_NO_ANGLE_EXTREME_RIGHT 45
+#define HEAD_SHAKE_NO_CYCLE_DURATION_MS 200
+#define HEAD_NOD_YES_ANGLE_UP 70
+#define HEAD_NOD_YES_ANGLE_DOWN 110
+#define HEAD_NOD_YES_CYCLE_DURATION_MS 200
+
+// === CLIFF DETECTION ===
+#define ANGLE_SOL 100 // Angle to look down at the ground (to be calibrated)
+#define SEUIL_VIDE 50 // If ground is further than 50cm, it's a cliff
+#define CLIFF_CHECK_INTERVAL_MS 500 // Check for cliff every 500ms when moving forward
 
 // === LOOP REGULATOR ===
 #define LOOP_TARGET_FREQUENCY 100 // Target frequency for the main loop in Hz
@@ -171,7 +188,10 @@ enum RobotState {
   SMART_AVOIDANCE,
   SENTRY_MODE,
   SENTRY_ALARM,
-  PLAYING_MUSIC
+  PLAYING_MUSIC,
+  CHECKING_GROUND,
+  CLIFF_DETECTED,
+  ANIMATING_HEAD
 };
 
 enum NavigationMode {

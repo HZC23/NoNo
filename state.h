@@ -24,11 +24,30 @@ enum ObstacleAvoidanceState {
   AVOID_BACKUP
 };
 
+enum GroundCheckState {
+  GC_START,
+  GC_LOOK_DOWN,
+  GC_WAIT,
+  GC_CHECK,
+  GC_LOOK_UP,
+  GC_FINISH
+};
+
+enum HeadAnimationType { ANIM_NONE, ANIM_SHAKE_NO, ANIM_NOD_YES };
+
 // Structure to hold the robot's state
 struct Robot {
     // State Machine
     RobotState currentState = IDLE;
     ObstacleAvoidanceState obstacleAvoidanceState = AVOID_START;
+    GroundCheckState groundCheckState = GC_START;
+    RobotState stateBeforeGroundCheck = IDLE;
+
+    HeadAnimationType currentHeadAnimation = ANIM_NONE;
+    unsigned long headAnimStartTime = 0;
+    int headAnimCycles = 0; // Number of times to repeat the animation (e.g., 1 for a single nod, 3 for three shakes)
+    RobotState stateBeforeHeadAnimation = IDLE; // Store the state before starting an animation
+
     NavigationMode currentNavMode = MANUAL_CONTROL;
     unsigned long lastActionTime = 0;
     bool actionStarted = false;
@@ -50,6 +69,10 @@ struct Robot {
     int Ncap = INITIAL_NCAP;
     int cap = INITIAL_CAP;
 
+    // Battery
+    bool batteryIsLow = false;
+    bool batteryIsCritical = false;
+
     // Manual Override
     int manualDistance = 0;
     int manualStartDistance = 0;
@@ -60,6 +83,12 @@ struct Robot {
     int distanceLaser = 0;
     bool obstacleDetectedByLaser = false;
     bool laserInitialized = false;
+
+    // Cliff Detection
+    unsigned long lastCliffCheckTime = 0;
+    
+    // Horizon Stabilization
+    float currentPitch = 0.0;
 
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
@@ -81,6 +110,7 @@ struct Robot {
     unsigned long lastLcdUpdateTime = 0;
     unsigned long lastJokeDisplayTime = 0;
     char musicFileName[64]; // To store the name of the music file to play
+    int currentPage;
 
     // Profiling
     unsigned long loopStartTime, loopEndTime;

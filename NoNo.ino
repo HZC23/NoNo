@@ -31,6 +31,7 @@ unsigned long startTime;
 
 // --- FORWARD DECLARATIONS ---
 void handleScanning(Robot& robot);
+void handleBatteryStatus(Robot& robot);
 
 // --- SETUP ---
 void setup() {
@@ -81,10 +82,8 @@ void setup() {
 
     Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
     Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
-    #if ENABLE_TOWER
       tourelle.attach();
       tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
-    #endif
 
     // Initialize SD card
     // if (!setupSDCard()) {
@@ -95,6 +94,7 @@ void setup() {
 
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
+    delay(2000); // Show second startup message for 2 seconds
     digitalWrite(PIN_PHARE, LOW); // Turn off headlight at the end of setup
 }
 
@@ -105,24 +105,7 @@ void loop() {
 
   robot.loopStartTime = millis();
 
-  // Check battery level first
-
-  if (readBatteryPercentage() == 0) {
-
-    setLcdText(robot, "Pas de batterie");
-
-    // Optional: Stop the robot completely if battery is dead.
-
-    if(robot.currentState != IDLE) {
-
-      changeState(robot, IDLE); // This will also stop the motors
-
-    }
-    delay(1000); // Wait a second before checking again
-
-  }
-
-
+  handleBatteryStatus(robot);
 
   // Process incoming commands
 
@@ -140,6 +123,7 @@ void loop() {
   // Update sensors
   sensor_update_task(robot);
   robot.cap = getCalibratedHeading(robot);
+  robot.currentPitch = getPitchAngle(robot); // Update current pitch for horizon stabilization
   if (robot.laserInitialized && vl53.dataReady()) {
     robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
   }
@@ -214,6 +198,42 @@ void handleScanning(Robot& robot) {
       if (DEBUG_MODE) Serial.println(F("Scan complete."));
     } else {
       tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE);
+    }
+  }
+}
+
+void handleBatteryStatus(Robot& robot) {
+  int batteryLevel = readBatteryPercentage();
+
+  // Handle critical battery level (e.g., completely empty)
+  if (batteryLevel < 1) { // Using < 1 instead of == 0 for robustness
+    if (!robot.batteryIsCritical) {
+      robot.batteryIsCritical = true;
+      robot.batteryIsLow = true; // Critical implies low
+    }
+    return; // Stop further evaluation
+  }
+
+  // Handle low battery threshold
+  if (batteryLevel < LOW_BATTERY_THRESHOLD) {
+    if (!robot.batteryIsLow) {
+      // First time hitting low battery
+      robot.speedAvg = VITESSE_LENTE; // Slow down
+      robot.speedSlow = VITESSE_LENTE / 2;
+      robot.batteryIsLow = true;
+    }
+    // Note: We don't set batteryIsCritical to false here. 
+    // It should only be cleared when battery is well above critical.
+  } 
+  // Handle battery recovery
+  else {
+    // Check if either flag was active
+    if (robot.batteryIsLow || robot.batteryIsCritical) {
+      // Restore default speeds
+      robot.speedAvg = VITESSE_MOYENNE;
+      robot.speedSlow = VITESSE_LENTE;
+      robot.batteryIsLow = false;
+      robot.batteryIsCritical = false; // Reset both flags
     }
   }
 }

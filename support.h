@@ -48,13 +48,13 @@ inline int readBatteryPercentage() {
   return constrain((int)percentage, 0, 100);
 }
 
-inline bool isValidNumericInput(const String& input, int minVal, int maxVal) {
-  for (unsigned int i = 0; i < input.length(); i++) {
-    if (!isDigit(input.charAt(i))) {
+inline bool isValidNumericInput(const char* input, int minVal, int maxVal) {
+  for (unsigned int i = 0; i < strlen(input); i++) {
+    if (!isdigit(input[i])) {
       return false;
     }
   }
-  long val = input.toInt();
+  long val = atol(input);
   return (val >= minVal && val <= maxVal);
 }
 

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <ctype.h>
-
+#include "config.h"
 #include "state.h"
 #include "fonctions_motrices.h"
 #include "compass.h"
@@ -164,7 +164,8 @@ inline void Terminal(Robot& robot) {
                         //     if (strcasecmp_local(value, "PLAY") == 0) {
                         //         char* musicFilename = strtok_r(NULL, CMD_DELIMITER, &strtok_state);
                         //         if (musicFilename != NULL) {
-                        //             robot.musicFileName = String(musicFilename); // Store filename for playback
+                        //             strncpy(robot.musicFileName, musicFilename, sizeof(robot.musicFileName) - 1);
+                        //             robot.musicFileName[sizeof(robot.musicFileName) - 1] = '\0'; // Ensure null termination
                         //             changeState(robot, PLAYING_MUSIC);
                         //         } else {
                         //             if (DEBUG_MODE) Serial.println(F("Error: Missing music filename"));
@@ -177,11 +178,26 @@ inline void Terminal(Robot& robot) {
                         //         Serial.println(filename);
                         //     });
                         // }
+                        } else if (strcasecmp_local(action, "ANIM") == 0) {
+                            if (strcasecmp_local(value, "NO") == 0) {
+                                robot.currentHeadAnimation = ANIM_SHAKE_NO;
+                                robot.headAnimStartTime = millis();
+                                robot.headAnimCycles = 3; // Shake head 3 times
+                                changeState(robot, ANIMATING_HEAD);
+                            } else if (strcasecmp_local(value, "YES") == 0) {
+                                robot.currentHeadAnimation = ANIM_NOD_YES;
+                                robot.headAnimStartTime = millis();
+                                robot.headAnimCycles = 1; // Nod head once
+                                changeState(robot, ANIMATING_HEAD);
+                            } else {
+                                if (DEBUG_MODE) Serial.println(F("Error: Unknown ANIM command value"));
+                            }
+                        }
                         else if (strcasecmp_local(action, "LCD") == 0) {
                             if (strlen(value) > MAX_LCD_TEXT_LENGTH) {
                                 if (DEBUG_MODE) Serial.println(F("Error: LCD text too long (max 32 chars)"));
                             } else {
-                                setLcdText(robot, String(value));
+                                setLcdText(robot, value);
                             }
                         }
                     } else {

@@ -27,6 +27,11 @@ inline bool isObstacleDetected(Robot& robot) {
 inline void changeState(Robot& robot, RobotState newState) {
   if (robot.currentState == newState) return;
   
+  // Store the current state if we are transitioning to an animation state
+  if (newState == ANIMATING_HEAD) {
+    robot.stateBeforeHeadAnimation = robot.currentState;
+  }
+  
   robot.currentState = newState;
   robot.actionStarted = false;
   robot.lastActionTime = millis();
@@ -36,6 +41,14 @@ inline void changeState(Robot& robot, RobotState newState) {
     robot.obstacleAvoidanceState = AVOID_START; // Reset the sub-state
   } else {
     robot.consecutiveAvoidManeuvers = 0; // Reset counter on other state changes
+  }
+
+  // Reset sub-state machines when leaving their primary state
+  if (newState != CHECKING_GROUND) {
+    robot.groundCheckState = GC_START;
+  }
+  if (newState != ANIMATING_HEAD) {
+    robot.currentHeadAnimation = ANIM_NONE;
   }
 
 
@@ -51,6 +64,12 @@ inline void Arret() {
 }
 
 inline void updateMotorControl(Robot& robot) {
+  // --- CRITICAL BATTERY E-STOP ---
+  if (robot.batteryIsCritical) {
+      Arret();
+      return;
+  }
+
   // --- Universal E-Stop ---
   if (digitalRead(INTERUPTPIN) == LOW) {
       Arret();
@@ -63,12 +82,21 @@ inline void updateMotorControl(Robot& robot) {
 
   switch (robot.currentState) {
     case IDLE:
-      tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
+      if (robot.batteryIsLow) {
+        tourelle.write(SCAN_CENTER_ANGLE, ANGLE_TETE_BASSE);
+      } else {
+        tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
+      }
       pwmA = 0;
       pwmB = 0;
       break;
 
     case MOVING_FORWARD:
+      if (millis() - robot.lastCliffCheckTime > CLIFF_CHECK_INTERVAL_MS) {
+          robot.stateBeforeGroundCheck = robot.currentState;
+          changeState(robot, CHECKING_GROUND);
+          return;
+      }
       if (robot.currentNavMode == AUTONOMOUS_CONTROL && isObstacleDetected(robot)) { // Obstacle detected in autonomous mode
           changeState(robot, OBSTACLE_AVOIDANCE);
       } else {
@@ -106,7 +134,7 @@ inline void updateMotorControl(Robot& robot) {
       
     case TURNING_LEFT:
       if (!robot.actionStarted) {
-        tourelle.write(135, NEUTRE_TOURELLE); // Regarde à gauche
+        tourelle.write(135, NEUTRE_TOURELLE - robot.currentPitch); // Regarde à gauche
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -116,7 +144,7 @@ inline void updateMotorControl(Robot& robot) {
         if (DEBUG_MODE) Serial.println("TURNING_LEFT: Timeout");
         tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
         changeState(robot, MOVING_FORWARD); 
-        break;
+        return;
       }
 
       pwmA = VITESSE_ROTATION;
@@ -144,7 +172,7 @@ inline void updateMotorControl(Robot& robot) {
        
     case TURNING_RIGHT:
       if (!robot.actionStarted) {
-        tourelle.write(45, NEUTRE_TOURELLE); // Regarde à droite
+        tourelle.write(45, NEUTRE_TOURELLE - robot.currentPitch); // Regarde à droite
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -154,7 +182,7 @@ inline void updateMotorControl(Robot& robot) {
         if (DEBUG_MODE) Serial.println("TURNING_RIGHT: Timeout");
         tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recentrer
         changeState(robot, MOVING_FORWARD); 
-        break;
+        return;
       }
 
       pwmA = -VITESSE_ROTATION;
@@ -181,6 +209,11 @@ inline void updateMotorControl(Robot& robot) {
       break;
       
     case FOLLOW_HEADING:
+      if (millis() - robot.lastCliffCheckTime > CLIFF_CHECK_INTERVAL_MS) {
+          robot.stateBeforeGroundCheck = robot.currentState;
+          changeState(robot, CHECKING_GROUND);
+          return;
+      }
       if (isObstacleDetected(robot)) {
           changeState(robot, OBSTACLE_AVOIDANCE); // Obstacle: scan for a new path
       } else {
@@ -364,6 +397,11 @@ inline void updateMotorControl(Robot& robot) {
       break;
 
     case SMART_AVOIDANCE:
+      if (millis() - robot.lastCliffCheckTime > CLIFF_CHECK_INTERVAL_MS) {
+          robot.stateBeforeGroundCheck = robot.currentState;
+          changeState(robot, CHECKING_GROUND);
+          return;
+      }
       if (isObstacleDetected(robot)) { // More cautious distance for this mode
         changeState(robot, OBSTACLE_AVOIDANCE);
       } else {
@@ -397,6 +435,111 @@ inline void updateMotorControl(Robot& robot) {
           PhareAllume();
         } else {
           PhareEteint();
+        }
+      }
+      break;
+
+    case CHECKING_GROUND:
+      switch(robot.groundCheckState) {
+        case GC_START:
+          Arret(); // Stop motors for a stable measurement
+          robot.groundCheckState = GC_LOOK_DOWN;
+          break;
+        case GC_LOOK_DOWN:
+          tourelle.write(tourelle.getAngleHorizontal(), ANGLE_SOL);
+          robot.turretMoveStartTime = millis();
+          robot.groundCheckState = GC_WAIT;
+          break;
+        case GC_WAIT:
+          if (millis() - robot.turretMoveStartTime > TURRET_MOVE_TIME_MS) {
+            robot.groundCheckState = GC_CHECK;
+          }
+          break;
+        case GC_CHECK:
+          // Distance Laser is updated in the main loop
+          if (robot.distanceLaser > SEUIL_VIDE || robot.distanceLaser == 0) { // distance 0 can be an error/out of range
+            changeState(robot, CLIFF_DETECTED);
+          } else {
+            robot.groundCheckState = GC_LOOK_UP;
+          }
+          break;
+        case GC_LOOK_UP:
+          tourelle.write(tourelle.getAngleHorizontal(), NEUTRE_TOURELLE);
+          robot.turretMoveStartTime = millis();
+          robot.groundCheckState = GC_FINISH;
+          break;
+        case GC_FINISH:
+          if (millis() - robot.turretMoveStartTime > TURRET_MOVE_TIME_MS) {
+            robot.lastCliffCheckTime = millis();
+            changeState(robot, robot.stateBeforeGroundCheck); // Return to previous state
+          }
+          break;
+      }
+      break;
+
+    case CLIFF_DETECTED:
+      // Emergency maneuver
+      setLcdText(robot, "ATTENTION VIDE !");
+      if (!robot.actionStarted) {
+          robot.actionStarted = true;
+          robot.lastActionTime = millis();
+          Arret();
+      }
+      if (millis() - robot.lastActionTime < AVOID_BACKUP_DURATION_MS) {
+          pwmA = -VITESSE_LENTE;
+          pwmB = -VITESSE_LENTE;
+      } else {
+          changeState(robot, IDLE);
+      }
+      break;
+
+    case ANIMATING_HEAD:
+      pwmA = 0; // Stop motors during animation
+      pwmB = 0;
+
+      unsigned long elapsed = millis() - robot.headAnimStartTime;
+
+      if (robot.currentHeadAnimation == ANIM_SHAKE_NO) {
+        int cycleTime = HEAD_SHAKE_NO_CYCLE_DURATION_MS;
+        int totalDuration = robot.headAnimCycles * cycleTime;
+
+        if (elapsed < totalDuration) {
+          // Calculate servo position for "no" shake
+          int currentCycleTime = elapsed % cycleTime;
+          int angle;
+          if (currentCycleTime < cycleTime / 2) {
+            // Right to Left
+            angle = map(currentCycleTime, 0, cycleTime / 2, HEAD_SHAKE_NO_ANGLE_EXTREME_RIGHT, HEAD_SHAKE_NO_ANGLE_EXTREME_LEFT);
+          } else {
+            // Left to Right
+            angle = map(currentCycleTime, cycleTime / 2, cycleTime, HEAD_SHAKE_NO_ANGLE_EXTREME_LEFT, HEAD_SHAKE_NO_ANGLE_EXTREME_RIGHT);
+          }
+          tourelle.write(angle, NEUTRE_TOURELLE);
+        } else {
+          // Animation finished
+          tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Recenter
+          changeState(robot, robot.stateBeforeHeadAnimation); // Return to previous state
+        }
+      } else if (robot.currentHeadAnimation == ANIM_NOD_YES) {
+        int cycleTime = HEAD_NOD_YES_CYCLE_DURATION_MS;
+        int totalDuration = robot.headAnimCycles * cycleTime;
+
+        if (elapsed < totalDuration) {
+          // Calculate servo position for "yes" nod
+          int currentCycleTime = elapsed % cycleTime;
+          int angle;
+          if (currentCycleTime < cycleTime / 2) {
+            // Down to Up
+            angle = map(currentCycleTime, 0, cycleTime / 2, HEAD_NOD_YES_ANGLE_DOWN, HEAD_NOD_YES_ANGLE_UP);
+          } else {
+            // Up to Down
+            angle = map(currentCycleTime, cycleTime / 2, cycleTime, HEAD_NOD_YES_ANGLE_UP, HEAD_NOD_YES_ANGLE_DOWN);
+          }
+          tourelle.write(tourelle.getAngleHorizontal(), angle); // Only vertical axis moves
+        } else {
+          // Animation finished
+          tourelle.write(tourelle.getAngleHorizontal(), NEUTRE_TOURELLE); // Recenter vertically
+          changeState(robot, robot.stateBeforeHeadAnimation); // Return to previous state
         }
       }
       break;
