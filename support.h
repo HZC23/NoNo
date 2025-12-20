@@ -7,8 +7,8 @@
 // Prototypes
 void PhareAllume();
 void PhareEteint();
+float readBatteryVoltage(); // New prototype
 int readBatteryPercentage();
-bool isValidNumericInput(const String& input, int minVal, int maxVal);
 
 // Implementations
 inline void PhareAllume() {
@@ -19,13 +19,38 @@ inline void PhareEteint() {
   digitalWrite(PIN_PHARE, LOW);
 }
 
+inline float readBatteryVoltage() {
+    // Buffer for moving average, declared static to persist across calls
+    const int BATTERY_READINGS_COUNT = 10;
+    static float batteryReadings[BATTERY_READINGS_COUNT] = {0};
+    static int readingsIndex = 0;
+    static bool readingsFilled = false;
+    static float sum = 0;
+
+    // Subtract the oldest reading from the sum
+    sum -= batteryReadings[readingsIndex];
+
+    // Read current voltage and add it to the buffer and the sum
+    float currentVoltage = (analogRead(VBAT) * 3.3 / 4095.0) * ((18 +10) / 10.0);
+    batteryReadings[readingsIndex] = currentVoltage;
+    sum += currentVoltage;
+
+    // Move to the next index
+    readingsIndex++;
+    if (readingsIndex >= BATTERY_READINGS_COUNT) {
+        readingsIndex = 0;
+        readingsFilled = true;
+    }
+
+    // Calculate average
+    int count = readingsFilled ? BATTERY_READINGS_COUNT : readingsIndex;
+    if (count == 0) return 0; // Avoid division by zero on first call
+    
+    return sum / count;
+}
+
 inline int readBatteryPercentage() {
-  // Based on a voltage divider with R1=6.8k and R2=10k
-  // V_pin = V_battery * (R2 / (R1 + R2))
-  // V_battery = V_pin * ((R1 + R2) / R2) = V_pin * 1.68
-  int sensorValue = analogRead(VBAT);
-  float pinVoltage = sensorValue * (5.0 / 1023.0);
-  float batteryVoltage = pinVoltage * 1.68;
+  float batteryVoltage = readBatteryVoltage();
 
   // Convert voltage to percentage based on selected battery type
   float maxVoltage, minVoltage;
@@ -37,10 +62,15 @@ inline int readBatteryPercentage() {
   maxVoltage = NIMH_MAX_VOLTAGE;
   minVoltage = NIMH_MIN_VOLTAGE;
 #else
-  // Default to LiPo if no type is selected
-  maxVoltage = LIPO_MAX_VOLTAGE;
-  minVoltage = LIPO_MIN_VOLTAGE;
+  // Default to NiMH if no type is selected or unrecognized
+  maxVoltage = NIMH_MAX_VOLTAGE;
+  minVoltage = NIMH_MIN_VOLTAGE;
 #endif
+
+  // Avoid division by zero
+  if (maxVoltage <= minVoltage) {
+    return 0;
+  }
 
   float percentage = ((batteryVoltage - minVoltage) / (maxVoltage - minVoltage)) * 100.0;
   

@@ -115,12 +115,17 @@ inline void handleLcdScrolling(Robot& robot) {
 inline void displayRandomJoke(Robot& robot) {
     char jokeBuffer[MAX_LCD_TEXT_LENGTH + 1];
     // Assurez-vous que getRandomJokeFromSD peut lire jusqu'à 64 chars
-    getRandomJokeFromSD("jokes.txt", jokeBuffer, sizeof(jokeBuffer));
+    getRandomJokeFromSD(robot, "jokes.txt", jokeBuffer, sizeof(jokeBuffer));
     setLcdText(robot, jokeBuffer);
     robot.lastJokeDisplayTime = millis();
 }
 
-void displayJokesIfIdle(Robot& robot) {
+inline void displayJokesIfIdle(Robot& robot) {
+    // Don't show jokes if a custom message is active
+    if (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS) {
+        return;
+    }
+
     unsigned long currentTime = millis();
     // On n'affiche une blague que si l'état IDLE n'a pas changé depuis longtemps
     // ET qu'on a fini de lire le texte précédent (optionnel, ici basé sur le temps)
@@ -132,6 +137,12 @@ void displayJokesIfIdle(Robot& robot) {
 }
 
 inline void updateLcdDisplay(Robot& robot) {
+    // If a custom message is active, just handle its scrolling and don't overwrite it
+    if (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS) {
+        handleLcdScrolling(robot);
+        return;
+    }
+
     // Buffer augmenté à MAX_LCD_TEXT_LENGTH (64)
     char displayBuffer[MAX_LCD_TEXT_LENGTH + 1] = {0};
 
@@ -208,14 +219,21 @@ inline void updateLcdDisplay(Robot& robot) {
             break;
 
         case SENTRY_MODE:
-            snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY MODE", "Scanning...");
-            break;
-
-        case SENTRY_ALARM:
-            // Exemple : On pourrait vouloir un message long ici !
-            // "ALERTE INTRUSION DETECTEE - ZONE SECTEUR 4 - ATTENTION"
-            // Pour l'instant, on garde le format court, mais le système supporte le long.
-            snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY ALARM", "INTRUDER!!!");
+            switch (robot.sentryState) {
+                case SENTRY_IDLE:
+                    snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY MODE", "Awaiting target");
+                    break;
+                case SENTRY_SCAN_START:
+                case SENTRY_SCAN_STEP:
+                    snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY MODE", "Scanning...");
+                    break;
+                case SENTRY_TRACKING:
+                    snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY MODE", "Tracking target");
+                    break;
+                case SENTRY_ALARM:
+                    snprintf(displayBuffer, sizeof(displayBuffer), "%-16s%-16s", "SENTRY ALARM", "INTRUDER!!!");
+                    break;
+            }
             break;
 
         case FOLLOW_HEADING:

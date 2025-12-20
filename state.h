@@ -2,12 +2,7 @@
 #define STATE_H
 
 #include <Arduino.h>
-#include <FS_MX1508.h>
-#include <Servo.h>
-#include <LSM303.h>
-#include <DFRobot_RGBLCD1602.h>
 #include "config.h"
-#include "tourelle.h" // Added for Tourelle class
 
 enum ObstacleAvoidanceState {
   AVOID_START,
@@ -21,7 +16,9 @@ enum ObstacleAvoidanceState {
   AVOID_FULL_SCAN_STEP,
   AVOID_FULL_SCAN_FINISH,
   AVOID_TURN_TO_BEST_ANGLE,
-  AVOID_BACKUP
+  AVOID_BACKUP,
+  AVOID_TURN_IN_PLACE,    // New state: turn in place to escape tight spots
+  AVOID_FINISH_TURN       // New state: wait for turn to complete
 };
 
 enum GroundCheckState {
@@ -35,12 +32,21 @@ enum GroundCheckState {
 
 enum HeadAnimationType { ANIM_NONE, ANIM_SHAKE_NO, ANIM_NOD_YES };
 
+enum SentryState {
+  SENTRY_IDLE,
+  SENTRY_SCAN_START,
+  SENTRY_SCAN_STEP,
+  SENTRY_TRACKING,
+  SENTRY_ALARM
+};
+
 // Structure to hold the robot's state
 struct Robot {
     // State Machine
     RobotState currentState = IDLE;
     ObstacleAvoidanceState obstacleAvoidanceState = AVOID_START;
     GroundCheckState groundCheckState = GC_START;
+    SentryState sentryState = SENTRY_IDLE;
     RobotState stateBeforeGroundCheck = IDLE;
 
     HeadAnimationType currentHeadAnimation = ANIM_NONE;
@@ -49,7 +55,9 @@ struct Robot {
     RobotState stateBeforeHeadAnimation = IDLE; // Store the state before starting an animation
 
     NavigationMode currentNavMode = MANUAL_CONTROL;
+    CommunicationMode currentCommMode = COMM_MODE_IDLE;
     unsigned long lastActionTime = 0;
+    unsigned long lastAppCommandTime = 0;
     bool actionStarted = false;
     bool initialActionTaken = false;
     int consecutiveAvoidManeuvers = 0;
@@ -73,6 +81,9 @@ struct Robot {
     bool batteryIsLow = false;
     bool batteryIsCritical = false;
 
+    // SD Card
+    bool sdCardReady = false;
+
     // Manual Override
     int manualDistance = 0;
     int manualStartDistance = 0;
@@ -90,9 +101,13 @@ struct Robot {
     // Horizon Stabilization
     float currentPitch = 0.0;
 
+    // Sentry Mode
+    bool lastPIRState = LOW;
+    int intruderAngle = 0;
+
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
-    // int currentScanAngleV = SCAN_V_START_ANGLE;
+    int currentScanAngleV = 90;
     unsigned long lastScanTime = 0;
     int scanDistances[SCAN_DISTANCE_ARRAY_SIZE]; // To store distances for angles 0-180
     int bestAvoidAngle;
@@ -108,6 +123,7 @@ struct Robot {
     // LCD
     char lcdText[MAX_LCD_TEXT_LENGTH + 1];
     unsigned long lastLcdUpdateTime = 0;
+    unsigned long customMessageSetTime = 0; // Time when a custom message was set
     unsigned long lastJokeDisplayTime = 0;
     char musicFileName[64]; // To store the name of the music file to play
     int currentPage;
@@ -119,14 +135,6 @@ struct Robot {
     const unsigned long reportInterval = 2000;
 };
 
-// Declare hardware objects as extern so they can be used in other files
-// The actual objects are defined in NoNo.ino
-extern MX1508 motorA;
-extern MX1508 motorB;
-extern Servo Servodirection;
-extern LSM303 compass;
-extern DFRobot_RGBLCD1602 lcd;
-extern Tourelle tourelle; // Added for Tourelle control
-extern VL53L1X vl53;
+
 
 #endif // STATE_H

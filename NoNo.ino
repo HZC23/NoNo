@@ -1,8 +1,7 @@
 // --- INCLUDES ---
 #include <Arduino.h>
-#include <Wire.h>
-#include <VL53L1X.h>
 #include <ArduinoJson.h> // Required for telemetry
+
 #include "config.h"      // Central configuration for pins and constants
 #include "state.h"       // Global state and hardware objects
 #include "compass.h"     // Compass logic
@@ -10,11 +9,14 @@
 #include "terminal.h"    // Serial command processing
 #include "sensor_task.h" // Ultrasonic sensor task
 #include "fonctions_motrices.h" // Motor control state machine
-#include "balises.h"     // LED indicators
+#include "led_fx.h"      // NeoPixel LED effects
 #include "support.h"     // Misc support functions
-#include "tourelle.h"    // Turret class
 #include "telemetry.h"   // For sending JSON data
-// #include "sd_utils.h"    // For SD card utilities
+#include "sd_utils.h"    // For SD card utilities
+#include "xbox_controller_bluepad.h" // Include the new Xbox controller library
+
+// --- RTOS ---
+SemaphoreHandle_t robotMutex = NULL;
 
 // --- HARDWARE OBJECTS DEFINITION ---
 MX1508 motorA(AIN1, AIN2);
@@ -29,33 +31,37 @@ VL53L1X vl53;
 Robot robot;
 unsigned long startTime;
 
+// --- XBOX CONTROLLER OBJECT ---
+XboxControllerBluepad xboxController(robot);
+
 // --- FORWARD DECLARATIONS ---
-void handleScanning(Robot& robot);
-void handleBatteryStatus(Robot& robot);
+void updateBatteryStatus(Robot& robot);
 
-// --- SETUP ---
 void setup() {
-    digitalWrite(PIN_PHARE, HIGH); // Turn on headlight at the beginning of setup
     Serial.begin(SERIAL_BAUD_RATE);
-    Wire.begin();
-    lcd.init();
-    randomSeed(analogRead(0)); // Initialize random number generator
-    if (DEBUG_MODE) Serial.println("--- NONO STARTUP ---");
-    startTime = millis(); // Initialize startupTime
+    if (DEBUG_MODE) Serial.println("--- NONO BOOTING ---");
+    startTime = millis();
 
-    if (DEBUG_MODE) Serial.println("Initializing VL53L1X...");
-    vl53.setBus(&Wire);
-    if (!vl53.init()) {
-        Serial.println(F("Failed to boot VL53L1X"));
-        setLcdText(robot, "Erreur Laser!");
-        robot.laserInitialized = false;
-    } else {
-        if (DEBUG_MODE) Serial.println("VL53L1X Initialized.");
-        vl53.setMeasurementTimingBudget(VL53L1X_TIMING_BUDGET_US);
-        vl53.startContinuous(VL53L1X_INTER_MEASUREMENT_PERIOD_MS);
-        robot.laserInitialized = true;
+    // Create a mutex for thread-safe access to the robot object
+    robotMutex = xSemaphoreCreateMutex();
+    Wire.begin(SDA_PIN, SCL_PIN); // Initialize I2C
+    if (!Wire.begin(SDA_PIN, SCL_PIN)) {
+        if (DEBUG_MODE) Serial.println("Erreur d'initialisation I2C");
     }
-
+    Wire.setTimeOut(50); // Prevent I2C freezes
+    delay(500);
+    
+    // Initialize SD card and update robot state
+    robot.sdCardReady = setupSDCard();
+    if (!robot.sdCardReady) {
+      // Handle SD card error without blocking the entire robot
+      setLcdText(robot, "SD Card Error!");
+      delay(2000); // Display the error for 2 seconds
+    }
+    delay(500);
+    // Initialize Xbox controller (Bluepad32)
+    xboxController.begin();
+    
     setLcdText(robot, LCD_STARTUP_MESSAGE_1); // Keep the first startup message for a moment
 
     // Init hardware
@@ -64,12 +70,7 @@ void setup() {
     pinMode(INTERUPTPIN, INPUT_PULLUP);
     pinMode(PIN_PHARE, OUTPUT); // Initialize headlight pin
     
-    #if ENABLE_LEDS
-      pinMode(LED_ROUGE, OUTPUT);
-      digitalWrite(LED_ROUGE, LOW);
-      pinMode(LED_JAUNE, OUTPUT);
-      digitalWrite(LED_JAUNE, LOW);
-    #endif
+    led_fx_init();
 
     // Init Sensors & Servos
     sensor_init();
@@ -80,85 +81,80 @@ void setup() {
     robot.speedAvg = VITESSE_MOYENNE;
     robot.speedSlow = VITESSE_LENTE;
 
-    Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
-    Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
+    // Servodirection.attach(PINDIRECTION, 70, 105); // Ackermann steering
+    // Servodirection.write(NEUTRE_DIRECTION);      // Ackermann steering
       tourelle.attach();
       tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
 
-    // Initialize SD card
-    // if (!setupSDCard()) {
-    //     // Handle SD card error, perhaps loop indefinitely or log
-    //     setLcdText(robot, "SD Card Error!");
-    //     while (true); 
-    // }
+    // Pass global hardware objects to the XboxControllerBluepad instance
+    xboxController.setHardware(motorA, motorB, tourelle);
 
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
-    delay(2000); // Show second startup message for 2 seconds
+    delay(SCROLL_DELAY_MS); // Show second startup message for 2 seconds
     digitalWrite(PIN_PHARE, LOW); // Turn off headlight at the end of setup
 }
 
 
-// --- MAIN LOOP ---
+// --- MAIN LOOP (CORE 1) ---
 
 void loop() {
 
   robot.loopStartTime = millis();
 
-  handleBatteryStatus(robot);
+  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
 
-  // Process incoming commands
+    // Process controller input
+    xboxController.processControllers();
 
-  Terminal(robot); 
+    updateBatteryStatus(robot);
+    led_fx_update(robot); // Update NeoPixel LEDs
 
- 
+    // Update sensors
+    sensor_update_task(robot);
+    robot.cap = getCalibratedHeading(robot);
+    robot.currentPitch = getPitchAngle(robot); // Update current pitch for horizon stabilization
+    if (robot.laserInitialized && vl53.dataReady()) {
+      robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
+    }
+    
+    // Update LCD display with current status or jokes if idle
+    displayJokesIfIdle(robot);
+    updateLcdDisplay(robot);
 
-  // Transition to OBSTACLE_AVOIDANCE only once at startup
-  if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
-      changeState(robot, OBSTACLE_AVOIDANCE);
-      robot.currentNavMode = AUTONOMOUS_CONTROL; // Set navigation mode to autonomous
-      robot.initialActionTaken = true;
-  }
+    // Transition to OBSTACLE_AVOIDANCE only once at startup
+    if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
+        changeState(robot, OBSTACLE_AVOIDANCE);
+        robot.currentNavMode = AUTONOMOUS_CONTROL; // Set navigation mode to autonomous
+        robot.initialActionTaken = true;
+    }
 
-  // Update sensors
-  sensor_update_task(robot);
-  robot.cap = getCalibratedHeading(robot);
-  robot.currentPitch = getPitchAngle(robot); // Update current pitch for horizon stabilization
-  if (robot.laserInitialized && vl53.dataReady()) {
-    robot.distanceLaser = vl53.readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
-  }
+    // Run state machines
+    switch (robot.currentState) {
+      case CALIBRATING_COMPASS:
+        calibrateCompass(robot);
+        break;
 
-  // Run state machines
-  switch (robot.currentState) {
-    case CALIBRATING_COMPASS:
-      calibrateCompass(robot);
-      break;
+      case SCANNING: // Unified scanning state
+        handleScanning(robot);
+        break;
 
-    case SCANNING: // Unified scanning state
-      handleScanning(robot);
-      break;
+      case PLAYING_MUSIC:
+        // Do nothing here, music is played in a separate task
+        break;
 
-    case PLAYING_MUSIC:
-      // Play music from SD card, then return to IDLE
-      setLcdText(robot, "Playing Music... (SD disabled)");
-      // playMusicFromSD(robot.musicFileName.c_str(), BUZZER_PIN); // SD card disabled
-      setLcdText(robot, "Music Finished");
-      changeState(robot, IDLE); // Return to IDLE after playing music
-      break;
+      default:
+        updateMotorControl(robot);
+        break;
+    }
 
-    default:
-      updateMotorControl(robot);
-      break;
-  }
-
-  // Update LCD display with current status or jokes if idle
-  displayJokesIfIdle(robot);
-  updateLcdDisplay(robot);
-
-  // Send telemetry back to the app periodically
-  if (millis() - robot.lastReportTime > robot.reportInterval) {
-    robot.lastReportTime = millis();
-    sendTelemetry(robot);
+    // Send telemetry back to the app periodically
+    if (millis() - robot.lastReportTime > robot.reportInterval) {
+      robot.lastReportTime = millis();
+      sendTelemetry(robot);
+    }
+    
+    xSemaphoreGive(robotMutex);
   }
 
   // Regulate loop frequency
@@ -169,44 +165,12 @@ void loop() {
   }
 }
 
-// --- STATE HANDLERS ---
 
-void handleScanning(Robot& robot) {
-  if (!robot.actionStarted) {
-    robot.currentScanAngleH = SCAN_H_START_ANGLE;
-    tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE); // Start scan at 90 deg vertical
-    robot.lastScanTime = millis();
-    robot.actionStarted = true;
-    if (DEBUG_MODE) Serial.println(F("Starting unified scan."));
-  }
-
-  if (millis() - robot.lastScanTime >= SCAN_DELAY_MS) {
-    robot.lastScanTime = millis();
-    
-    // Report current angle and distance
-    if (DEBUG_MODE) {
-      Serial.print(F("Scan: Angle="));
-      Serial.print(robot.currentScanAngleH);
-      Serial.print(F(", Dist="));
-      Serial.println(robot.distanceLaser);
-    }
-
-    robot.currentScanAngleH += SCAN_H_STEP;
-    if (robot.currentScanAngleH > SCAN_H_END_ANGLE) {
-      tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE); // Center turret when done
-      changeState(robot, IDLE); // Scan complete
-      if (DEBUG_MODE) Serial.println(F("Scan complete."));
-    } else {
-      tourelle.write(robot.currentScanAngleH, NEUTRE_TOURELLE);
-    }
-  }
-}
-
-void handleBatteryStatus(Robot& robot) {
+void updateBatteryStatus(Robot& robot) {
   int batteryLevel = readBatteryPercentage();
 
   // Handle critical battery level (e.g., completely empty)
-  if (batteryLevel < 1) { // Using < 1 instead of == 0 for robustness
+  if (batteryLevel < CRITICAL_BATTERY_LEVEL) { // Using < 1 instead of == 0 for robustness
     if (!robot.batteryIsCritical) {
       robot.batteryIsCritical = true;
       robot.batteryIsLow = true; // Critical implies low
@@ -237,4 +201,3 @@ void handleBatteryStatus(Robot& robot) {
     }
   }
 }
-

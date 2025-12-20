@@ -18,6 +18,7 @@
 #define EEPROM_MAG_MAX_Y_ADDR 28
 #define EEPROM_MAG_MAX_Z_ADDR 32
 #define EEPROM_MAGIC_VALUE 12345
+#define EEPROM_SIZE 64
 
 // Function Prototypes
 void compass_init(Robot& robot);
@@ -46,7 +47,7 @@ inline float getPitchAngle(Robot& robot) {
     // Adjust signs based on sensor orientation.
     // Angle = atan2(y, z) * 180 / PI; (standard formula)
     // Adjust 90-degree offset if sensor is mounted horizontally
-    float pitch = atan2(compass.a.y, compass.a.z) * 180.0 / PI;
+    float pitch = atan2(compass.a.y, -compass.a.z) * 180.0 / PI;
 
     // Compensate for sensor mounting (e.g., if Z points forward and Y up)
     // This part often requires calibration or knowing the exact sensor orientation.
@@ -70,6 +71,7 @@ inline float calculateHeading(const LSM303& compass) {
 
 inline void compass_init(Robot& robot) {
     if (DEBUG_MODE) Serial.println("Initialisation du compas...");
+    EEPROM.begin(EEPROM_SIZE);
     if (!compass.init()) {
         if (DEBUG_MODE) Serial.println("ERREUR: Impossible d'initialiser le compas!");
         setLcdText(robot, "ERREUR COMPAS");
@@ -175,6 +177,11 @@ inline void saveCompassCalibration(const Robot& robot) {
     EEPROM.put(EEPROM_MAG_MAX_X_ADDR, robot.magMax.x);
     EEPROM.put(EEPROM_MAG_MAX_Y_ADDR, robot.magMax.y);
     EEPROM.put(EEPROM_MAG_MAX_Z_ADDR, robot.magMax.z);
+    if (!EEPROM.commit()) {
+        if (DEBUG_MODE) Serial.println("ERREUR: Impossible de sauvegarder la calibration en EEPROM!");
+    } else {
+        if (DEBUG_MODE) Serial.println("Calibration sauvegardee en EEPROM.");
+    }
 }
 
 inline void loadCompassCalibration(Robot& robot) {

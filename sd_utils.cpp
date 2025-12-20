@@ -1,5 +1,6 @@
 #include "sd_utils.h"
 #include "config.h" // For SD_CS_PIN and DEBUG_MODE
+#include "state.h"    // For Robot struct
 #include <string.h>
 
 // Helper to check if a string ends with a specific suffix
@@ -27,7 +28,15 @@ bool setupSDCard() {
     return true;
 }
 
-void getRandomJokeFromSD(const char* filename, char* buffer, size_t bufferSize) {
+void getRandomJokeFromSD(Robot& robot, const char* filename, char* buffer, size_t bufferSize) {
+    if (!robot.sdCardReady) {
+        if (DEBUG_MODE) {
+            Serial.println(F("SD Card not ready for getRandomJokeFromSD."));
+        }
+        strncpy(buffer, "Error: SD Card not ready!", bufferSize - 1);
+        buffer[bufferSize - 1] = '\0';
+        return;
+    }
     File jokesFile = SD.open(filename);
     if (!jokesFile) {
         if (DEBUG_MODE) {
@@ -74,7 +83,13 @@ void getRandomJokeFromSD(const char* filename, char* buffer, size_t bufferSize) 
     jokesFile.close();
 }
 
-void playMusicFromSD(const char* filename, int buzzerPin) {
+void playMusicFromSD(Robot& robot, const char* filename, int buzzerPin) {
+    if (!robot.sdCardReady) {
+        if (DEBUG_MODE) {
+            Serial.println(F("SD Card not ready for playMusicFromSD."));
+        }
+        return;
+    }
     File musicFile = SD.open(filename);
     if (!musicFile) {
         if (DEBUG_MODE) {
@@ -132,7 +147,13 @@ void playMusicFromSD(const char* filename, int buzzerPin) {
     }
 }
 
-void listMusicFiles(void (*callback)(const char* filename)) {
+void listMusicFiles(Robot& robot, void (*callback)(const char* filename)) {
+    if (!robot.sdCardReady) {
+        if (DEBUG_MODE) {
+            Serial.println(F("SD Card not ready for listMusicFiles."));
+        }
+        return;
+    }
     File root = SD.open("/");
     if (!root) {
         if (DEBUG_MODE) {

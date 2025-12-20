@@ -21,14 +21,15 @@ Le code est organisé en plusieurs fichiers d'en-tête (`.h`) pour séparer les 
 | `config.h` | Fichier de configuration central. Contient les constantes, les broches (pins), les flags d'activation du matériel et les définitions de types (comme l'énumération `RobotState`). |
 | `state.h` | Définit la structure `Robot` qui contient toutes les variables d'état globales. |
 | `fonctions_motrices.h` | Implémente la logique de contrôle des moteurs et la machine à états principale (`updateMotorControl`). |
-| `terminal.h` | Gère la réception et l'interprétation des commandes provenant du port série (USB ou Bluetooth). |
+| `terminal.h` | Gère la réception des commandes série. **(Note : Contient un analyseur de commandes JSON actuellement inactif. Le contrôle principal est géré par `xbox_controller_bluepad.h`.)** |
 | `telemetry.h` | Gère la construction et l'envoi des messages de télémétrie JSON vers le port série. |
 | `sensor_task.h` | Contient les tâches non bloquantes pour la lecture du capteur à ultrasons. |
 | `compass.h` | Encapsule toute la logique liée au magnétomètre LSM303 : lecture, filtrage et calibration. |
 | `display.h` | Gère l'affichage des informations sur l'écran LCD I2C. |
+| `xbox_controller_bluepad.h` | **(Nouveau)** Gère l'initialisation et la lecture des commandes d'une manette Xbox via Bluepad32. |
 | `tourelle.h` | Classe de contrôle pour les servomoteurs de la tourelle (pan/tilt). |
 | `support.h` | Fonctions utilitaires diverses (ex: lecture de la batterie). |
-| `balises.h` | Fonctions de contrôle des LEDs de statut. |
+| `led_fx.h` | Gère les effets visuels de la bande de LEDs NeoPixel en fonction de l'état du robot. |
 | `fonctions.h`| Fonctions diverses, partiellement dépréciées. |
 
 ---
@@ -85,3 +86,42 @@ Un effort important a été fait pour améliorer la qualité, la lisibilité et 
 - **Amélioration de la Lisibilité :** Des logiques complexes comme la détermination des points cardinaux dans `compass.h` ont été simplifiées.
 - **Suppression du Code Obsolète :** L'état `AVOID_MANEUVER` (devenu redondant) et une fonction wrapper `setLcdText` superflue ont été supprimés.
 - **Consistance :** L'ensemble du code a été revu pour utiliser les nouvelles constantes et les fonctions refactorisées, garantissant un comportement plus cohérent et prévisible.
+
+---
+
+## Gestion des LEDs (`led_fx.h`)
+
+Le robot est équipé de **4 LEDs RGB adressables (NeoPixel)** qui fournissent un retour visuel sur son état. La logique, contenue dans `led_fx.h`, est gérée par la fonction `led_fx_update()` appelée à chaque boucle principale.
+
+Le système est basé sur des priorités : les états les plus critiques écrasent les états de moindre importance pour garantir que les informations vitales sont toujours visibles.
+
+### Ordre de Priorité des Effets LED
+
+1.  **Batterie Critique :**
+    - **Effet :** Les 4 LEDs clignotent rapidement en rouge.
+    - **Condition :** `robot.batteryIsCritical` est vrai.
+
+2.  **Détection de Précipice :**
+    - **Effet :** Les 4 LEDs clignotent en orange.
+    - **Condition :** `robot.currentState` est `CLIFF_DETECTED`.
+
+3.  **Évitement d'Obstacle :**
+    - **Effet :** Un "scanner Cylon" : une seule LED rouge se déplace d'avant en arrière sur les 4 LEDs.
+    - **Condition :** `robot.currentState` est `OBSTACLE_AVOIDANCE`.
+
+4.  **Mode Sentinelle :**
+    - **Poursuite :** Les 4 LEDs clignotent rapidement entre rouge et jaune.
+    - **Scan :** Scanner "Cylon" avec une LED bleue.
+    - **Condition :** `robot.currentState` est `SENTRY_MODE`.
+
+5.  **États de Mouvement et d'Attente (priorité plus faible) :**
+    - **`IDLE` (Inactif) :** Les 4 LEDs ont un effet de "respiration" bleu.
+    - **`MOVING_FORWARD` :** Les 4 LEDs sont vertes fixes.
+    - **`MOVING_BACKWARD` :** Les 4 LEDs sont oranges fixes.
+    - **`TURNING_LEFT` :** La LED la plus à gauche s'allume en jaune, les autres sont éteintes.
+    - **`TURNING_RIGHT` :** La LED la plus à droite s'allume en jaune, les autres sont éteintes.
+    - **`CALIBRATING_COMPASS` :** Un effet arc-en-ciel défile sur les 4 LEDs.
+
+6.  **Indicateurs par Défaut :**
+    - **Batterie Faible (si inactif) :** Les 4 LEDs ont une pulsation lente jaune.
+    - **État non géré :** Toutes les LEDs sont éteintes.

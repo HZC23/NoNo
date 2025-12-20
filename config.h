@@ -4,72 +4,88 @@
 // === DEBUG MODE ===
 #define DEBUG_MODE true // Master switch for serial debug output
 
-// === PIN DEFINITIONS ===
-// Motor A (Droite)
-#define AIN1 3
-#define AIN2 2
-// Motor B (Gauche)
-#define BIN1 5
-#define BIN2 4
-// Ultrasonic Sensor
-#define TRIGGER 36
-#define ECHO 37
-// Servos
-#define PINDIRECTION 10
-#define PINTOURELLE_H 8
-#define PINTOURELLE_V 9
-// LEDs
-#define LED_ROUGE 22
-#define LED_JAUNE 24
-// Headlight
-#define PIN_PHARE 38
-// Other
-#define VBAT A0 // Broche pour la mesure de la tension de la batterie
-#define INTERUPTPIN 39 // Broche pour le bouton d'arrêt d'urgence
-#define PIR 40 // Broche pour le capteur de mouvement PIR
-#define SD_CS_PIN 26 // Chip Select pin for SD card module
-#define BUZZER_PIN 6 // Pin for passive buzzer
+// ====================================================
+// === CONFIGURATION ESP32-S3 LITE ===
+
+// --- CARTE SD (Bus SPI1) ---
+#define SD_CS_PIN     10
+#define SD_SCK        12
+#define SD_MISO       13
+#define SD_MOSI       11
+
+// --- BUS I2C ---
+#define SDA_PIN       3
+#define SCL_PIN       9
+
+// --- SERVOMOTEURS (N'importe quelle pin PWM) ---
+#define PINDIRECTION  1   // Servo Direction
+#define PINTOURELLE_H 2   // Pan
+#define PINTOURELLE_V 4   // Tilt
+
+// --- MOTEURS DC (Pont en H) ---
+#define AIN1          17
+#define AIN2          18
+#define BIN1          8
+#define BIN2          16
+
+// --- CAPTEURS ---
+#define TRIGGER       38
+#define ECHO          39
+#define VBAT          5    // Entrée Analogique
+#define PIR           40
+#define INTERUPTPIN   21
+
+// --- SORTIES ---
+#define NEOPIXEL_PIN  48   // Souvent la LED intégrée sur le S3
+#define NEOPIXEL_COUNT 4
+#define BUZZER_PIN    42
+#define PIN_PHARE     45
+// ====================================================
 
 #define PWM_MAX 255
-#define ENABLE_LEDS false // Mettre à true lorsque les LEDs sont installées
 
 #define NEUTRE_DIRECTION 90
 #define NEUTRE_TOURELLE 90
 #define ULTRASONIC_OBSTACLE_THRESHOLD_CM 10 // Ultrasonic obstacle threshold in cm
 #define LASER_OBSTACLE_THRESHOLD_CM 20   // Laser obstacle threshold in cm
-#define VMINI 150
 #define INITIAL_CAP 0
 #define INITIAL_NCAP 0
 #define VITESSE_LENTE 150
 #define VITESSE_MOYENNE 200
-#define VITESSE_RAPIDE 250
 #define VITESSE_ROTATION 200
-#define RAMP_STEP 5
-#define ACCELERATION_STEP 10
-#define DECELERATION_STEP 10
-#define HEADING_TOLERANCE 5.0
+#define VITESSE_ROTATION_MAX 200
 #define TOLERANCE_VIRAGE 2.0
-#define Kp_ROTATION 5.0
 #define Kp_HEADING 1.5
-#define SERVO_ADJUSTMENT_FACTOR 2.0
-#define SERVO_MAX_ADJUSTMENT 20
 #define CALIBRATION_MOTEUR_B 1.0
 #define SCAN_CENTER_ANGLE 90
 #define COMPASS_IS_INVERTED true // Mettre à true si la boussole est montée à l'envers
 
-
+// === TIMING & DELAYS ===
+#define CUSTOM_MESSAGE_DURATION_MS 5000 // Duration for custom LCD messages
 #define SENTRY_ALARM_DURATION_MS 5000
 #define SENTRY_ALARM_BLINK_DIVISOR 2
+#define SENTRY_ALARM_TONE 1000 // Hz
+#define SENTRY_SCAN_SPEED_MS 50
+#define SENTRY_TRACKING_DURATION_MS 5000
+#define SENTRY_DETECTION_RANGE_CM 150
 #define TURNING_TIMEOUT_MS 5000
+#define CURIOUS_MODE_DELAY_MS 20000
 #define AVOID_BACKUP_DURATION_MS 1000
 #define SENTRY_FLASH_INTERVAL_MS 250
 #define TURRET_MOVE_TIME_MS 200
+
+// Angles for the turret to look into a turn
+#define TURNING_LOOK_LEFT_ANGLE 135
+#define TURNING_LOOK_RIGHT_ANGLE 45
 
 
 #define SCAN_DISTANCE_ARRAY_SIZE 181
 #define SCAN_H_START_ANGLE 10
 #define SCAN_H_END_ANGLE 170
 #define SCAN_H_STEP 5
+#define SCAN_V_START_ANGLE 70
+#define SCAN_V_END_ANGLE 110
+#define SCAN_V_STEP 10
 #define SCAN_DELAY_MS 100 // Delay between each scan step
 #define QUICK_SCAN_LEFT_ANGLE 70
 #define QUICK_SCAN_RIGHT_ANGLE 110
@@ -102,6 +118,7 @@
 #define CARDINAL_WEST_UPPER 292.5
 
 // === BATTERY CONFIGURATION ===
+#define CRITICAL_BATTERY_LEVEL 1
 #define BATTERY_TYPE_LIPO 0
 #define BATTERY_TYPE_NIMH 1
 
@@ -120,7 +137,7 @@
 
 
 #define SERIAL_BAUD_RATE 115200
-#define LCD_I2C_ADDR 0x60
+#define LCD_I2C_ADDR 0x6B
 #define LCD_ROWS 2
 
 #define LCD_LINE_LENGTH 16
@@ -140,11 +157,9 @@
 
 // === LCD MESSAGES ===
 #define LCD_STARTUP_MESSAGE_1 "Je suis Nono"
-#define LCD_STARTUP_MESSAGE_2 "Paré à exploser...explorer pardon"
+#define LCD_STARTUP_MESSAGE_2 "Paré à exploser"
+#define LCD_STARTUP_MESSAGE_3 "...explorer pardon"
 
-#define SCAN_V_START_ANGLE NEUTRE_TOURELLE
-#define SCAN_V_END_ANGLE NEUTRE_TOURELLE // For now, only scan at neutral vertical angle
-#define SCAN_V_STEP 1 // Not used for now, but good to have
 
 // === HEAD ANIMATIONS ===
 #define HEAD_SHAKE_NO_ANGLE_EXTREME_LEFT 135
@@ -155,7 +170,7 @@
 #define HEAD_NOD_YES_CYCLE_DURATION_MS 200
 
 // === CLIFF DETECTION ===
-#define ANGLE_SOL 100 // Angle to look down at the ground (to be calibrated)
+#define ANGLE_SOL 140 // Angle to look down at the ground (to be calibrated)
 #define SEUIL_VIDE 50 // If ground is further than 50cm, it's a cliff
 #define CLIFF_CHECK_INTERVAL_MS 500 // Check for cliff every 500ms when moving forward
 
@@ -185,18 +200,66 @@ enum RobotState {
   SMART_TURNING,
   CALIBRATING_COMPASS,
   SCANNING,
+  SCANNING_3D,
   SMART_AVOIDANCE,
   SENTRY_MODE,
-  SENTRY_ALARM,
   PLAYING_MUSIC,
   CHECKING_GROUND,
   CLIFF_DETECTED,
-  ANIMATING_HEAD
-};
+  ANIMATING_HEAD,
+  APP_CONTROL
+} ;
 
 enum NavigationMode {
   MANUAL_CONTROL,
   AUTONOMOUS_CONTROL
 };
+
+enum CommunicationMode {
+  COMM_MODE_IDLE,
+  COMM_MODE_XBOX,
+  COMM_MODE_APP
+};
+
+// === RTOS & TASK CONSTANTS ===
+#define BLUETOOTH_TASK_STACK_SIZE 10000
+#define BLUETOOTH_TASK_PRIORITY 1
+#define BLUETOOTH_TASK_CORE_ID 0
+#define BLUETOOTH_TASK_DELAY_MS 10
+#define MUTEX_WAIT_TICKS 10
+#define APP_FAILSAFE_TIMEOUT_MS 500
+
+// === XBOX CONTROLLER CONSTANTS ===
+#define GAMEPAD_NAME "Xbox Wireless Controller" // The name of your BLE Gamepad. Adjust if necessary.
+#define XBOX_JOYSTICK_DEADZONE 10 // Deadzone for joystick to prevent drift (0-127)
+#define XBOX_JOYSTICK_MIN -512
+#define XBOX_JOYSTICK_MAX 511
+#define XBOX_SPEED_INCREMENT 10
+
+// === SAFETY & PERSISTENT MODE ===
+#define ENABLE_PERSISTENT_MODE false // Set to true to make the robot continue its last action on disconnect. Use with caution!
+#define LCD_PERSISTENT_MODE_ACTIVE "Persistent Mode!" // LCD message when persistent mode is active
+
+// === HARDWARE LIBRARIES & EXTERN DECLARATIONS ===
+#include <FS_MX1508.h>
+#include <Servo.h>
+#include <LSM303.h>
+#include <VL53L1X.h>
+#include <DFRobot_RGBLCD1602.h>
+#include <Adafruit_NeoPixel.h>
+
+#include "tourelle.h"
+
+// Declare hardware objects as extern.
+// The actual objects are defined in NoNo.ino
+extern MX1508 motorA;
+extern MX1508 motorB;
+extern Servo Servodirection;
+extern LSM303 compass;
+extern DFRobot_RGBLCD1602 lcd;
+extern VL53L1X vl53;
+
+extern Tourelle tourelle;
+
 
 #endif // CONFIG_H
