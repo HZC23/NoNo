@@ -1,4 +1,5 @@
 #include "xbox_controller_bluepad.h"
+#include "terminal.h" // For processCommand
 
 // Struct to hold the previous state of a controller for single-press detection
 struct ControllerState {
@@ -81,7 +82,6 @@ bool XboxControllerBluepad::isConnected() {
 
 // --- Main Processing Loop ---
 void XboxControllerBluepad::processControllers() {
-    // This function should be called in the main loop()
     BP32.update();
 
     for (int i = 0; i < BP32_MAX_CONTROLLERS; i++) {
@@ -92,94 +92,105 @@ void XboxControllerBluepad::processControllers() {
             int32_t joyX = ctl->axisX();
             int32_t joyY = ctl->axisY();
 
-            // Apply deadzone
             if (abs(joyX) < 150) joyX = 0;
             if (abs(joyY) < 150) joyY = 0;
 
-            // Map joystick values to PWM range
-            // Stick values are -1024 to 1023.
-            int throttle = map(joyY, -1024, 1023, PWM_MAX, -PWM_MAX); // Invert Y
+            int throttle = map(joyY, -1024, 1023, PWM_MAX, -PWM_MAX);
             int turn = map(joyX, -1024, 1023, -PWM_MAX, PWM_MAX);
             
             int pwmRight = constrain(throttle - turn, -PWM_MAX, PWM_MAX);
             int pwmLeft = constrain(throttle + turn, -PWM_MAX, PWM_MAX);
 
-            // Only send motor commands if the robot's state is explicitly set to APP_CONTROL.
-            // This prevents the controller from interfering with autonomous modes like OBSTACLE_AVOIDANCE.
-            if (robot_ptr->currentState == APP_CONTROL) {
+            if (robot_ptr->currentState == GAMEPAD_CONTROL) {
                 motorA_ptr->motorGo(pwmRight);
                 motorB_ptr->motorGo(pwmLeft);
             }
 
-            // State management: switch to APP_CONTROL on joystick input, or back to IDLE when input stops.
             if (pwmLeft != 0 || pwmRight != 0) {
-                changeState(*robot_ptr, APP_CONTROL);
-            } else if (robot_ptr->currentState == APP_CONTROL) {
+                if(robot_ptr->currentState != GAMEPAD_CONTROL) changeState(*robot_ptr, GAMEPAD_CONTROL);
+            } else if (robot_ptr->currentState == GAMEPAD_CONTROL) {
                 changeState(*robot_ptr, IDLE);
             }
 
-            // --- Right Joystick: Turret Control ---
-            int32_t turretX = ctl->axisRX();
-            int32_t turretY = ctl->axisRY();
+            // --- Right Joystick: Turret Control (REMOVED) ---
 
-            if (abs(turretX) > 150 || abs(turretY) > 150) {
-                int targetHAngle = map(turretX, -1024, 1023, SCAN_H_END_ANGLE, SCAN_H_START_ANGLE);
-                int targetVAngle = map(turretY, 1024, -1023, SCAN_V_END_ANGLE, SCAN_V_START_ANGLE); // Invert Y
-                tourelle_ptr->write(targetHAngle, targetVAngle);
-            }
-
-            // --- Button Mappings (single press detection) ---
+            // --- Configurable Button Mappings ---
+            uint32_t currentButtons = ctl->buttons();
+            uint16_t currentMiscButtons = ctl->miscButtons();
             ControllerState& last = lastStates[i];
 
-            if (ctl->a() && !last.a) {
+            // Helper macros for detecting a single press
+            #define WAS_MAIN_BUTTON_PRESSED(button) ((currentButtons & button) && !(last.buttons & button))
+            #define WAS_MISC_BUTTON_PRESSED(button) ((currentMiscButtons & button) && !(last.miscButtons & button))
+
+            // Action: Toggle Headlight
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_HEADLIGHT)) {
                 digitalWrite(PIN_PHARE, !digitalRead(PIN_PHARE));
-                ctl->playDualRumble(0, 150, 0x80, 0x80); // Use playDualRumble
+                ctl->playDualRumble(0, 150, 0x80, 0x80);
             }
-            if (ctl->b() && !last.b) {
+
+            // Action: Toggle Obstacle Avoidance
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_AVOIDANCE)) {
                 if (robot_ptr->currentState == OBSTACLE_AVOIDANCE) {
                     changeState(*robot_ptr, IDLE);
                 } else {
                     changeState(*robot_ptr, OBSTACLE_AVOIDANCE);
                 }
             }
-            if (ctl->x() && !last.x) {
+
+            // Action: Toggle Sentry Mode
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_SENTRY)) {
                 if (robot_ptr->currentState == SENTRY_MODE) {
                     changeState(*robot_ptr, IDLE);
                 } else {
                     changeState(*robot_ptr, SENTRY_MODE);
                 }
             }
-            if (ctl->y() && !last.y) {
-                changeState(*robot_ptr, SCANNING_3D);
+
+            // Action: Speed Up
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_SPEED_UP)) {
+                robot_ptr->vitesseCible = constrain(robot_ptr->vitesseCible + XBOX_SPEED_INCREMENT, 0, PWM_MAX);
             }
-            // Use bitmask for shoulder buttons
-            if ((ctl->buttons() & BUTTON_SHOULDER_R) && !(last.buttons & BUTTON_SHOULDER_R)) {
-                 robot_ptr->vitesseCible = constrain(robot_ptr->vitesseCible + XBOX_SPEED_INCREMENT, 0, PWM_MAX);
-            }
-            if ((ctl->buttons() & BUTTON_SHOULDER_L) && !(last.buttons & BUTTON_SHOULDER_L)) {
+
+            // Action: Speed Down
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_SPEED_DOWN)) {
                 robot_ptr->vitesseCible = constrain(robot_ptr->vitesseCible - XBOX_SPEED_INCREMENT, 0, PWM_MAX);
             }
             
-            uint16_t misc = ctl->miscButtons();
-            // MISC_BUTTON_BACK == "View" button
-            if ((misc & MISC_BUTTON_BACK) && !(last.miscButtons & MISC_BUTTON_BACK)) {
-                 tourelle_ptr->write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
-            }
-            // MISC_BUTTON_HOME == "Menu" button
-            if ((misc & MISC_BUTTON_HOME) && !(last.miscButtons & MISC_BUTTON_HOME)) {
+            // Action: Emergency Stop (sets state to IDLE)
+            if (WAS_MISC_BUTTON_PRESSED(XBOX_BTN_EMERGENCY_STOP)) {
                 changeState(*robot_ptr, IDLE);
-                setLcdText(*robot_ptr, "Xbox OFF");
             }
 
+            // --- D-Pad Actions ---
+            uint8_t currentDpad = ctl->dpad();
+            #define WAS_DPAD_PRESSED(button) ((currentDpad & button) && !(last.dpad & button))
+
+            #if (XBOX_DPAD_UP_ACTION == XBOX_ACTION_CALIBRATE_COMPASS)
+                if (WAS_DPAD_PRESSED(DPAD_UP)) changeState(*robot_ptr, CALIBRATING_COMPASS);
+            #endif
+
+            #if (XBOX_DPAD_DOWN_ACTION == XBOX_ACTION_CALIBRATE_COMPASS)
+                if (WAS_DPAD_PRESSED(DPAD_DOWN)) changeState(*robot_ptr, CALIBRATING_COMPASS);
+            #endif
+
+            #if (XBOX_DPAD_LEFT_ACTION == XBOX_ACTION_CALIBRATE_COMPASS)
+                if (WAS_DPAD_PRESSED(DPAD_LEFT)) changeState(*robot_ptr, CALIBRATING_COMPASS);
+            #endif
+
+            #if (XBOX_DPAD_RIGHT_ACTION == XBOX_ACTION_CALIBRATE_COMPASS)
+                if (WAS_DPAD_PRESSED(DPAD_RIGHT)) changeState(*robot_ptr, CALIBRATING_COMPASS);
+            #endif
+            
+            // Cleanup the helper macros
+            #undef WAS_MAIN_BUTTON_PRESSED
+            #undef WAS_MISC_BUTTON_PRESSED
+            #undef WAS_DPAD_PRESSED
 
             // --- Update last state for next iteration ---
-            last.a = ctl->a();
-            last.b = ctl->b();
-            last.x = ctl->x();
-            last.y = ctl->y();
-            last.buttons = ctl->buttons(); // Store full button state
-            last.miscButtons = misc;
-            last.dpad = ctl->dpad();
+            last.buttons = currentButtons;
+            last.miscButtons = currentMiscButtons;
+            last.dpad = currentDpad;
         }
     }
 }

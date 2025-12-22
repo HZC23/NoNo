@@ -16,6 +16,8 @@ bool setupSDCard() {
     if (DEBUG_MODE) {
         Serial.print(F("Initializing SD card..."));
     }
+    // Initialize SPI bus with specific pins
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS_PIN);
     if (!SD.begin(SD_CS_PIN)) {
         if (DEBUG_MODE) {
             Serial.println(F("SD Card initialization failed!"));
@@ -72,118 +74,45 @@ void getRandomJokeFromSD(Robot& robot, const char* filename, char* buffer, size_
     if (jokesFile.available()) {
         size_t bytesRead = jokesFile.readBytesUntil('\n', buffer, bufferSize - 1);
         buffer[bytesRead] = '\0';
-        // Trim potential carriage return
-        if (bytesRead > 0 && buffer[bytesRead - 1] == '\r') {
-            buffer[bytesRead - 1] = '\0';
+
+        // --- Start Text Cleaning ---
+        char* start = buffer;
+        // Trim leading whitespace
+        while (isspace((unsigned char)*start)) {
+            start++;
         }
+
+        // Trim trailing whitespace
+        char* end = start + strlen(start) - 1;
+        while (end > start && isspace((unsigned char)*end)) {
+            *end-- = '\0';
+        }
+
+        // Remove leading quote
+        if (*start == '"') {
+            start++;
+        }
+        // Remove trailing quote
+        end = start + strlen(start) - 1;
+        if (end >= start && *end == '"') {
+            *end = '\0';
+        }
+
+        // Remove trailing ellipsis "..."
+        end = start + strlen(start) - 1;
+        size_t len = strlen(start);
+        if (len >= 3 && strcmp(start + len - 3, "...") == 0) {
+            *(start + len - 3) = '\0';
+        }
+
+        // Move the cleaned text to the beginning of the buffer
+        memmove(buffer, start, strlen(start) + 1);
+        // --- End Text Cleaning ---
+
     } else {
         buffer[0] = '\0';
     }
 
     jokesFile.close();
-}
-
-void playMusicFromSD(Robot& robot, const char* filename, int buzzerPin) {
-    if (!robot.sdCardReady) {
-        if (DEBUG_MODE) {
-            Serial.println(F("SD Card not ready for playMusicFromSD."));
-        }
-        return;
-    }
-    File musicFile = SD.open(filename);
-    if (!musicFile) {
-        if (DEBUG_MODE) {
-            Serial.print(F("Error opening music file "));
-            Serial.println(filename);
-        }
-        return;
-    }
-
-    if (DEBUG_MODE) {
-        Serial.print(F("Playing music from "));
-        Serial.println(filename);
-    }
-
-    char lineBuffer[64];
-    while (musicFile.available()) {
-        int bytesRead = musicFile.readBytesUntil('\n', lineBuffer, sizeof(lineBuffer) - 1);
-        lineBuffer[bytesRead] = '\0';
-        
-        if (bytesRead > 0 && lineBuffer[bytesRead-1] == '\r') {
-            lineBuffer[bytesRead-1] = '\0';
-        }
-
-        if (strlen(lineBuffer) == 0) continue;
-
-        char* comma = strchr(lineBuffer, ',');
-        if (comma == NULL) {
-            if (DEBUG_MODE) {
-                Serial.print(F("Invalid music line: "));
-                Serial.println(lineBuffer);
-            }
-            continue;
-        }
-
-        *comma = '\0';
-        char* freqStr = lineBuffer;
-        char* durationStr = comma + 1;
-
-        int frequency = atoi(freqStr);
-        int duration = atoi(durationStr);
-
-        if (frequency > 0 && duration > 0) {
-            tone(buzzerPin, frequency, duration);
-            delay(duration + 10); // This is blocking, as noted in review
-        } else if (duration > 0) {
-            noTone(buzzerPin);
-            delay(duration); // This is blocking
-        }
-    }
-
-    noTone(buzzerPin);
-    musicFile.close();
-    if (DEBUG_MODE) {
-        Serial.println(F("Finished playing music."));
-    }
-}
-
-void listMusicFiles(Robot& robot, void (*callback)(const char* filename)) {
-    if (!robot.sdCardReady) {
-        if (DEBUG_MODE) {
-            Serial.println(F("SD Card not ready for listMusicFiles."));
-        }
-        return;
-    }
-    File root = SD.open("/");
-    if (!root) {
-        if (DEBUG_MODE) {
-            Serial.println(F("Failed to open SD card root directory."));
-        }
-        return;
-    }
-
-    if (DEBUG_MODE) {
-        Serial.println(F("Listing music files:"));
-    }
-
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) {
-            break;
-        }
-
-        if (!entry.isDirectory()) {
-            const char* entryName = entry.name();
-            if (endsWith(entryName, ".txt")) {
-                if (DEBUG_MODE) {
-                    Serial.print(F("- "));
-                    Serial.println(entryName);
-                }
-                callback(entryName);
-            }
-        }
-        entry.close();
-    }
-    root.close();
 }
 

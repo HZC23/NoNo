@@ -7,7 +7,5 @@
 
 bool setupSDCard();
 void getRandomJokeFromSD(Robot& robot, const char* filename, char* buffer, size_t bufferSize);
-void playMusicFromSD(Robot& robot, const char* filename, int buzzerPin);
-void listMusicFiles(Robot& robot, void (*callback)(const char* filename));
 
 #endif // SD_UTILS_H

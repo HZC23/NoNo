@@ -88,4 +88,41 @@ inline bool isValidNumericInput(const char* input, int minVal, int maxVal) {
   return (val >= minVal && val <= maxVal);
 }
 
+/**
+ * @brief Converts the RobotState enum to a human-readable string.
+ * @param state The RobotState to convert.
+ * @return A const char* representing the state.
+ */
+inline const char* stateToString(RobotState state) {
+    switch (state) {
+        case IDLE: return "IDLE";
+        case MOVING_FORWARD: return "MOVING_FORWARD";
+        case MOVING_BACKWARD: return "MOVING_BACKWARD";
+        case TURNING_LEFT: return "TURNING_LEFT";
+        case TURNING_RIGHT: return "TURNING_RIGHT";
+        case MANUAL_FORWARD: return "MANUAL_FORWARD";
+        case MANUAL_BACKWARD: return "MANUAL_BACKWARD";
+        case MANUAL_TURNING_LEFT: return "MANUAL_TURNING_LEFT";
+        case MANUAL_TURNING_RIGHT: return "MANUAL_TURNING_RIGHT";
+        case OBSTACLE_AVOIDANCE: return "OBSTACLE_AVOIDANCE";
+        case WAITING_FOR_TURRET: return "WAITING_FOR_TURRET";
+        case FOLLOW_HEADING: return "FOLLOW_HEADING";
+        case MAINTAIN_HEADING: return "MAINTAIN_HEADING";
+        case BACKING_UP_OBSTACLE: return "BACKING_UP_OBSTACLE";
+        case SCANNING_FOR_PATH: return "SCANNING_FOR_PATH";
+        case TURNING_TO_PATH: return "TURNING_TO_PATH";
+        case SMART_TURNING: return "SMART_TURNING";
+        case CALIBRATING_COMPASS: return "CALIBRATING_COMPASS";
+        case SMART_AVOIDANCE: return "SMART_AVOIDANCE";
+        case SENTRY_MODE: return "SENTRY_MODE";
+        case CHECKING_GROUND: return "CHECKING_GROUND";
+        case CLIFF_DETECTED: return "CLIFF_DETECTED";
+        case ANIMATING_HEAD: return "ANIMATING_HEAD";
+        case APP_CONTROL: return "APP_CONTROL";
+        case EMERGENCY_EVASION: return "EMERGENCY_EVASION";
+        case STUCK: return "STUCK";
+        default: return "UNKNOWN";
+    }
+}
+
 #endif // SUPPORT_H

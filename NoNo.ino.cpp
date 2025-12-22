@@ -1,8 +1,11 @@
-// --- INCLUDES ---
+# 1 "C:\\Users\\Hadrien\\AppData\\Local\\Temp\\tmpo17pda89"
+#include <Arduino.h>
+# 1 "C:/Users/Hadrien/Documents/PlatformIO/Projects/Nono/src/NoNo.ino"
+
 #include <Arduino.h>
 
 #include <ArduinoJson.h>
-#include <Preferences.h> // For storing the active comm mode
+#include <Preferences.h>
 
 #include "config.h"
 #include "state.h"
@@ -17,39 +20,41 @@
 #include "sd_utils.h"
 #include "turret_control.h"
 
-// Include the Xbox controller handler
+
 #include "xbox_controller_bluepad.h"
 
 
-// --- RTOS ---
+
 SemaphoreHandle_t robotMutex = NULL;
 
-// --- BUMPER INTERRUPT ---
+
 volatile bool bumperPressed = false;
 
-// --- HARDWARE OBJECTS DEFINITION ---
+
 MX1508 motorA(AIN1, AIN2);
 MX1508 motorB(BIN1, BIN2);
-Servo Servodirection; // Ackermann steering
+Servo Servodirection;
 Tourelle tourelle(PINTOURELLE_H, PINTOURELLE_V);
 LSM303 *compass;
 DFRobot_RGBLCD1602 *lcd;
 VL53L1X *vl53;
 
-// --- GLOBAL STATE & COMM OBJECTS ---
+
 Robot robot;
 unsigned long startTime;
 Preferences preferences;
-XboxControllerBluepad xboxController(robot); // Always declare the object
+XboxControllerBluepad xboxController(robot);
 unsigned long lastCompassReadTime = 0;
-
-// --- INTERRUPT SERVICE ROUTINE ---
+void IRAM_ATTR onBumperPress();
+void setup();
+void loop();
+#line 47 "C:/Users/Hadrien/Documents/PlatformIO/Projects/Nono/src/NoNo.ino"
 void IRAM_ATTR onBumperPress() {
   bumperPressed = true;
 }
 
 
-// --- FORWARD DECLARATIONS ---
+
 void updateBatteryStatus(Robot& robot);
 
 void setup() {
@@ -57,75 +62,75 @@ void setup() {
     if (DEBUG_MODE) Serial.println("--- NONO BOOTING ---");
     startTime = millis();
 
-    // Determine active communication mode from NVS
-    bool nvsOpened = preferences.begin(NVS_NAMESPACE, true); // Try read-only first
+
+    bool nvsOpened = preferences.begin(NVS_NAMESPACE, true);
     if (!nvsOpened) {
-        // If read-only failed, try write mode to create it
+
         nvsOpened = preferences.begin(NVS_NAMESPACE, false);
         if (nvsOpened) {
-            // If successfully opened in write mode, save the default value
+
             preferences.putInt(NVS_COMM_MODE_KEY, COMM_MODE_BLE_APP);
             if (DEBUG_MODE) Serial.println("NVS namespace created and default comm mode set.");
         } else {
-            // Critical error: NVS still couldn't open
+
             if (DEBUG_MODE) Serial.println("CRITICAL ERROR: Failed to open NVS namespace. Proceeding with default.");
-            // Handle this critical error: for now, continue with the default value,
-            // but preferences operations might fail silently or crash later if not checked.
+
+
         }
     }
-    
-    // Now that we've ensured the namespace exists (or tried our best), read the value.
-    // If preferences.begin() failed completely, robot.activeCommMode will use the default.
+
+
+
     robot.activeCommMode = (CommunicationMode)preferences.getInt(NVS_COMM_MODE_KEY, COMM_MODE_BLE_APP);
     preferences.end();
 
-    // Create a mutex for thread-safe access to the robot object
+
     robotMutex = xSemaphoreCreateMutex();
 
     if (!Wire.begin(SDA_PIN, SCL_PIN)) {
         if (DEBUG_MODE) Serial.println("Erreur d'initialisation I2C");
     }
-    Wire.setClock(400000); // Set I2C clock to 400 kHz for faster communication
+    Wire.setClock(400000);
     delay(500);
 
-    // Instantiate I2C objects AFTER Wire.begin()
+
     compass = new LSM303();
     lcd = new DFRobot_RGBLCD1602(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS);
     vl53 = new VL53L1X();
 
-    // Initialize SD card
+
     if (!setupSDCard()) {
       setLcdText(robot, "SD Card Error!");
       while (true);
     }
     delay(500);
     lcd->init();
-    
-    // --- Initialize Communication Mode based on runtime value ---
+
+
     if (robot.activeCommMode == COMM_MODE_XBOX) {
         if (DEBUG_MODE) Serial.println("COMM MODE: Xbox Controller");
         xboxController.begin();
-    } else { // Fallback to Serial Only if not Xbox
+    } else {
         if (DEBUG_MODE) Serial.println("COMM MODE: Serial Only");
     }
 
     setLcdText(robot, LCD_STARTUP_MESSAGE_1);
 
-    // Init hardware
+
     pinMode(PIR, INPUT);
     pinMode(VBAT, INPUT);
     pinMode(INTERUPTPIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(INTERUPTPIN), onBumperPress, FALLING);
     pinMode(PIN_PHARE, OUTPUT);
-    
+
     led_fx_init();
 
-    // Init Sensors & Servos
+
     sensor_init();
     compass_init(robot);
     robot.compassInverted = COMPASS_IS_INVERTED;
 
-    // Initialize configurable parameters
+
     robot.speedAvg = VITESSE_MOYENNE;
     robot.speedSlow = VITESSE_LENTE;
 
@@ -145,7 +150,7 @@ void setup() {
 }
 
 
-// --- MAIN LOOP (CORE 1) ---
+
 
 void loop() {
 
@@ -153,30 +158,30 @@ void loop() {
 
   if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
 
-    // --- High-Priority Interrupt Checks ---
+
     if (bumperPressed) {
-      bumperPressed = false; // Reset flag immediately
+      bumperPressed = false;
       if (robot.currentState != EMERGENCY_EVASION) {
         changeState(robot, EMERGENCY_EVASION);
       }
     }
 
-    // --- Turret Control ---
+
     bool isMoving = (robot.currentState == MOVING_FORWARD || robot.currentState == FOLLOW_HEADING || robot.currentState == MAINTAIN_HEADING);
     updateTurret(robot, isMoving);
 
-    // --- Process input based on active communication mode ---
+
     if (robot.activeCommMode == COMM_MODE_XBOX) {
       xboxController.processControllers();
     }
-    
-    // Always check for serial commands for debugging and mode switching
+
+
     checkSerial();
 
     updateBatteryStatus(robot);
     led_fx_update(robot);
 
-    // Update sensors
+
     sensor_update_task(robot);
     if (robot.currentState != IDLE || (millis() - lastCompassReadTime > COMPASS_READ_INTERVAL_MS)) {
       robot.cap = getCalibratedHeading(robot);
@@ -186,18 +191,18 @@ void loop() {
     if (robot.laserInitialized && vl53->dataReady()) {
       robot.distanceLaser = vl53->readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
     }
-    
-    // Update LCD display
+
+
     displayJokesIfIdle(robot);
     updateLcdDisplay(robot);
 
-    // Initial autonomous action
+
     if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
         changeState(robot, OBSTACLE_AVOIDANCE);
         robot.initialActionTaken = true;
     }
 
-    // Run state machines
+
     switch (robot.currentState) {
       case CALIBRATING_COMPASS:
         calibrateCompass(robot);
@@ -207,16 +212,16 @@ void loop() {
         break;
     }
 
-    // Send telemetry periodically
+
     if (millis() - robot.lastReportTime > robot.reportInterval) {
       robot.lastReportTime = millis();
       sendTelemetry(robot);
     }
-    
+
     xSemaphoreGive(robotMutex);
   }
 
-  // Regulate loop frequency
+
   robot.loopEndTime = millis();
   unsigned long loopDuration = robot.loopEndTime - robot.loopStartTime;
   if (loopDuration < LOOP_TARGET_PERIOD_MS) {
@@ -242,7 +247,7 @@ void updateBatteryStatus(Robot& robot) {
       robot.speedSlow = VITESSE_LENTE / 2;
       robot.batteryIsLow = true;
     }
-  } 
+  }
   else {
     if (robot.batteryIsLow || robot.batteryIsCritical) {
       robot.speedAvg = VITESSE_MOYENNE;

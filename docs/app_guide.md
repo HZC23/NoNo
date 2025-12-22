@@ -1,14 +1,24 @@
 # Nono Robot - App Communication Guide
 
-This guide describes the communication protocol between the Nono robot and the Android application.
+This guide describes the communication protocol between the Nono robot and its companion application.
 
 ## 1. Connection
 
-The robot uses Bluetooth Serial for communication. The app should connect to the robot using the Bluetooth Serial Port Profile (SPP). The robot's Bluetooth name is "Nono".
+The robot communicates via Bluetooth Low Energy (BLE) using a standard UART service. The app should connect directly using the following BLE service and characteristic UUIDs:
+
+*   **Service UUID:** `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+*   **Write Characteristic (App to Robot):** `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
+*   **Notify Characteristic (Robot to App):** `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+
+**Connection Flow:**
+1.  Scan for the specified Service UUID.
+2.  Connect to the GATT server of the detected device.
+3.  Enable notifications on the Notify characteristic to receive telemetry.
+4.  Write commands to the Write characteristic.
 
 ## 2. Command Format
 
-All commands sent to the robot must be terminated with a newline character (\n). The commands are case-insensitive.
+All commands sent to the robot must be terminated with a newline character (`\n`). The commands are case-insensitive.
 
 The general command format is:
 
@@ -22,28 +32,38 @@ Some commands don't require a value. For example, to toggle the obstacle avoidan
 
 `AVOID\n`
 
+Manual control commands (like `V:value;D:value`) are non-sticky and must be sent continuously to maintain movement.
+
 ## 3. Commands
 
 Here is a list of all the available commands:
 
 ### Movement
 
-| Command | Description |
-|---|---|
-| `V:value;D:value` | Sets the robot's velocity and direction. `V` is the velocity from -100 to 100. `D` is the direction from -100 to 100. | `V:50;D:25\n` |
+| Command | Description | Example |
+|---|---|---|
+| `V:value;D:value` | Sets the robot's velocity and direction using differential steering. `V` is the velocity from -100 to 100. `D` is the direction from -100 to 100. | `V:50;D:25\n` |
 | `S:value` | Sets the robot's target speed. `value` is an integer from 0 to 255. | `S:200\n` |
 
 ### Modes
 
 | Command | Description |
 |---|---|
-| `M:AVOID` | Switches to obstacle avoidance mode. |
+| `M:IDLE` | Switches to idle mode. The robot stops all autonomous tasks. |
+| `M:FOLLOW_HEADING` | Activates autonomous navigation to follow a specific heading (GOTO mode). |
+| `M:SMART_AVOIDANCE` | Activates general roaming with intelligent obstacle avoidance. |
+| `M:AVOID` | Switches to obstacle avoidance mode. (Alias for `M:SMART_AVOIDANCE`) |
 | `M:SENTRY` | Switches to sentry mode. |
-| `M:SCAN3D` | Starts a 3D scan. |
-| `M:IDLE` | Switches to idle mode. |
-| `AVOID` | Toggles obstacle avoidance mode. |
-| `SENTRY` | Toggles sentry mode. |
-| `SCAN3D` | Starts a 3D scan. |
+| `AVOID` | Toggles obstacle avoidance mode. (Legacy command, prefer `M:SMART_AVOIDANCE`)|
+| `SENTRY` | Toggles sentry mode. (Legacy command, prefer `M:SENTRY`) |
+
+
+### Configuration & Calibration
+
+| Command | Description | Example |
+|---|---|---|
+| `CMD:COMPASS_OFFSET:value` | Sets the fine-tuning offset for the compass. `value` is an integer representing the offset. | `CMD:COMPASS_OFFSET:10\n` |
+
 
 ### Actions
 
@@ -51,12 +71,10 @@ Here is a list of all the available commands:
 |---|---|
 | `HL:ON` | Turns the headlight on. |
 | `HL:OFF` | Turns the headlight off. |
-| `MUSIC:PLAY` | Plays music from the SD card. |
-| `MUSIC:STOP` | Stops the music. |
 
 ## 4. Telemetry
 
-The robot sends telemetry data to the app as a JSON object, terminated with a newline character (\n). The telemetry is sent periodically.
+The robot sends telemetry data to the app as a JSON object, terminated with a newline character (`\n`). The telemetry is sent periodically.
 
 Here is an example of the telemetry data:
 
@@ -68,9 +86,9 @@ Here is an example of the telemetry data:
 
 | Field | Description |
 |---|---|
-| `state` | The current state of the robot. Possible values are: "IDLE", "MOVING_FORWARD", "MOVING_BACKWARD", "TURNING_LEFT", "TURNING_RIGHT", "FOLLOW_HEADING", "MAINTAIN_HEADING", "OBSTACLE_AVOIDANCE", "SCANNING", "UNKNOWN". |
-| `heading` | The robot's current heading in degrees (0-360). |
+| `state` | The current state of the robot. Possible values include: "IDLE", "MOVING_FORWARD", "MOVING_BACKWARD", "TURNING_LEFT", "TURNING_RIGHT", "FOLLOW_HEADING", "MAINTAIN_HEADING", "OBSTACLE_AVOIDANCE", "AVOID_MANEUVER", "SCANNING", "UNKNOWN". |
+| `heading` | The robot's current heading in degrees (0-360), derived from the LSM303 compass. |
 | `distance` | The distance to the nearest obstacle in cm, measured by the ultrasonic sensor. |
-| `distanceLaser` | The distance to the nearest obstacle in cm, measured by the laser sensor. |
+| `distanceLaser` | The distance to the nearest obstacle in cm, measured by the VL53L1X laser sensor. |
 | `battery` | The battery level in percent (0-100). |
 | `speedTarget` | The robot's target speed (0-255). |

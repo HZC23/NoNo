@@ -29,16 +29,16 @@ void loadCompassCalibration(Robot& robot);
 bool isEEPROMDataValid();
 float calculateHeading(float y, float x); // Overloaded
 float calculateHeading(const LSM303& compass);
-float getPitchAngle(Robot& robot); // New prototype for pitch calculation
+float getPitch(Robot& robot); // New prototype for pitch calculation
 void displayCompassInfo(Robot& robot);
 
 
 // --- IMPLEMENTATIONS ---
 
 // New function to calculate pitch angle from accelerometer
-inline float getPitchAngle(Robot& robot) {
+inline float getPitch(Robot& robot) {
     // Read accelerometer data
-    compass.readAcc();
+    compass->readAcc();
 
     // Calculate pitch using atan2 for robustness
     // The accelerometer measures gravity, so an un-tilted sensor will read (0,0,1g) on Z if Z is up.
@@ -47,7 +47,7 @@ inline float getPitchAngle(Robot& robot) {
     // Adjust signs based on sensor orientation.
     // Angle = atan2(y, z) * 180 / PI; (standard formula)
     // Adjust 90-degree offset if sensor is mounted horizontally
-    float pitch = atan2(compass.a.y, -compass.a.z) * 180.0 / PI;
+    float pitch = atan2(compass->a.y, -compass->a.z) * 180.0 / PI;
 
     // Compensate for sensor mounting (e.g., if Z points forward and Y up)
     // This part often requires calibration or knowing the exact sensor orientation.
@@ -72,14 +72,14 @@ inline float calculateHeading(const LSM303& compass) {
 inline void compass_init(Robot& robot) {
     if (DEBUG_MODE) Serial.println("Initialisation du compas...");
     EEPROM.begin(EEPROM_SIZE);
-    if (!compass.init()) {
+    if (!compass->init()) {
         if (DEBUG_MODE) Serial.println("ERREUR: Impossible d'initialiser le compas!");
         setLcdText(robot, "ERREUR COMPAS");
         robot.compassInitialized = false;
     } else {
         if (DEBUG_MODE) Serial.println("Compas initialise avec succes!");
         robot.compassInitialized = true;
-        compass.enableDefault();
+        compass->enableDefault();
         loadCompassCalibration(robot);
     }
 }
@@ -87,8 +87,8 @@ inline void compass_init(Robot& robot) {
 inline float getCalibratedHeading(Robot& robot) {
     if (!robot.compassInitialized) return 0.0;
     
-    compass.read();
-    if (compass.m.x == 0 && compass.m.y == 0 && compass.m.z == 0) {
+    compass->read();
+    if (compass->m.x == 0 && compass->m.y == 0 && compass->m.z == 0) {
         if (DEBUG_MODE) Serial.println("ATTENTION: Valeurs compas nulles dans getCalibratedHeading()");
         return 0.0;
     }
@@ -96,15 +96,15 @@ inline float getCalibratedHeading(Robot& robot) {
     float heading;
     if (robot.compassCalibrated) {
         // Correct for hard-iron distortion
-        float corrected_x = compass.m.x - (robot.magMin.x + robot.magMax.x) / 2.0;
-        float corrected_y = compass.m.y - (robot.magMin.y + robot.magMax.y) / 2.0;
+        float corrected_x = compass->m.x - (robot.magMin.x + robot.magMax.x) / 2.0;
+        float corrected_y = compass->m.y - (robot.magMin.y + robot.magMax.y) / 2.0;
 
         // Correct for soft-iron distortion
         float avg_delta_x = (robot.magMax.x - robot.magMin.x) / 2.0;
         float avg_delta_y = (robot.magMax.y - robot.magMin.y) / 2.0;
         
         if (avg_delta_x == 0 || avg_delta_y == 0) {
-            heading = calculateHeading(compass);
+            heading = calculateHeading(*compass);
         } else {
             float avg_delta = (avg_delta_x + avg_delta_y) / 2.0;
             float scaled_x = corrected_x * (avg_delta / avg_delta_x);
@@ -112,7 +112,7 @@ inline float getCalibratedHeading(Robot& robot) {
             heading = calculateHeading(scaled_y, scaled_x);
         }
     } else {
-        heading = calculateHeading(compass);
+        heading = calculateHeading(*compass);
     }
 
     // Apply inversion and fine-tuning offset
@@ -142,13 +142,13 @@ inline void calibrateCompass(Robot& robot) {
     }
 
     if (millis() - startTime < COMPASS_CALIBRATION_DURATION_MS) {
-        compass.read();
-        robot.magMin.x = min(robot.magMin.x, compass.m.x);
-        robot.magMin.y = min(robot.magMin.y, compass.m.y);
-        robot.magMin.z = min(robot.magMin.z, compass.m.z);
-        robot.magMax.x = max(robot.magMax.x, compass.m.x);
-        robot.magMax.y = max(robot.magMax.y, compass.m.y);
-        robot.magMax.z = max(robot.magMax.z, compass.m.z);
+        compass->read();
+        robot.magMin.x = min(robot.magMin.x, compass->m.x);
+        robot.magMin.y = min(robot.magMin.y, compass->m.y);
+        robot.magMin.z = min(robot.magMin.z, compass->m.z);
+        robot.magMax.x = max(robot.magMax.x, compass->m.x);
+        robot.magMax.y = max(robot.magMax.y, compass->m.y);
+        robot.magMax.z = max(robot.magMax.z, compass->m.z);
     } else {
         Serial.println("=== CALIBRATION TERMINEE ===");
         if (robot.magMin.x < COMPASS_CALIBRATION_VALIDATION_THRESHOLD && robot.magMax.x > -COMPASS_CALIBRATION_VALIDATION_THRESHOLD) {

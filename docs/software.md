@@ -91,37 +91,42 @@ Un effort important a été fait pour améliorer la qualité, la lisibilité et 
 
 ## Gestion des LEDs (`led_fx.h`)
 
-Le robot est équipé de **4 LEDs RGB adressables (NeoPixel)** qui fournissent un retour visuel sur son état. La logique, contenue dans `led_fx.h`, est gérée par la fonction `led_fx_update()` appelée à chaque boucle principale.
+Le robot est équipé de **4 LEDs RGB adressables (NeoPixel)**, mais leur disposition est particulière :
+- **1 LED interne :** Située sur la carte ESP32-S3 (index `0`), elle n'est pas visible de l'extérieur et reste éteinte en fonctionnement normal.
+- **3 LEDs externes :** Visibles sur le châssis du robot (indices `1`, `2`, `3`).
 
-Le système est basé sur des priorités : les états les plus critiques écrasent les états de moindre importance pour garantir que les informations vitales sont toujours visibles.
+La logique dans `led_fx.h` est conçue pour n'utiliser que les 3 LEDs externes pour le retour visuel. La LED la plus à gauche correspond à l'index `3`, celle du milieu à l'index `2`, et celle de droite à l'index `1`.
 
-### Ordre de Priorité des Effets LED
+Le système est basé sur des priorités pour afficher l'état le plus important.
+
+### Ordre de Priorité des Effets LED (sur les 3 LEDs externes)
 
 1.  **Batterie Critique :**
-    - **Effet :** Les 4 LEDs clignotent rapidement en rouge.
+    - **Effet :** Les 3 LEDs clignotent rapidement en rouge.
     - **Condition :** `robot.batteryIsCritical` est vrai.
 
 2.  **Détection de Précipice :**
-    - **Effet :** Les 4 LEDs clignotent en orange.
+    - **Effet :** Les 3 LEDs clignotent en orange.
     - **Condition :** `robot.currentState` est `CLIFF_DETECTED`.
 
 3.  **Évitement d'Obstacle :**
-    - **Effet :** Un "scanner Cylon" : une seule LED rouge se déplace d'avant en arrière sur les 4 LEDs.
+    - **Effet :** Un "scanner Cylon" : une seule LED rouge se déplace d'avant en arrière sur les 3 LEDs externes.
     - **Condition :** `robot.currentState` est `OBSTACLE_AVOIDANCE`.
 
 4.  **Mode Sentinelle :**
-    - **Poursuite :** Les 4 LEDs clignotent rapidement entre rouge et jaune.
-    - **Scan :** Scanner "Cylon" avec une LED bleue.
+    - **Poursuite :** Les 3 LEDs clignotent rapidement entre rouge et jaune.
+    - **Scan :** Scanner "Cylon" avec une LED bleue sur les 3 LEDs externes.
     - **Condition :** `robot.currentState` est `SENTRY_MODE`.
 
-5.  **États de Mouvement et d'Attente (priorité plus faible) :**
-    - **`IDLE` (Inactif) :** Les 4 LEDs ont un effet de "respiration" bleu.
-    - **`MOVING_FORWARD` :** Les 4 LEDs sont vertes fixes.
-    - **`MOVING_BACKWARD` :** Les 4 LEDs sont oranges fixes.
-    - **`TURNING_LEFT` :** La LED la plus à gauche s'allume en jaune, les autres sont éteintes.
-    - **`TURNING_RIGHT` :** La LED la plus à droite s'allume en jaune, les autres sont éteintes.
-    - **`CALIBRATING_COMPASS` :** Un effet arc-en-ciel défile sur les 4 LEDs.
+5.  **États de Mouvement et d'Attente :**
+    - **`IDLE` (Inactif) :** Effet de "respiration" bleu sur les 3 LEDs.
+    - **`MOVING_FORWARD` :** Les 3 LEDs sont vertes fixes.
+    - **`MOVING_BACKWARD` :** Les 3 LEDs sont oranges fixes.
+    - **`TURNING_LEFT` :** La LED la plus à gauche (index 3) s'allume en jaune, les autres sont éteintes.
+    - **`TURNING_RIGHT` :** La LED la plus à droite (index 1) s'allume en jaune, les autres sont éteintes.
+    - **`CALIBRATING_COMPASS` :** Un effet arc-en-ciel défile sur les 3 LEDs.
 
 6.  **Indicateurs par Défaut :**
-    - **Batterie Faible (si inactif) :** Les 4 LEDs ont une pulsation lente jaune.
-    - **État non géré :** Toutes les LEDs sont éteintes.
+    - **Batterie Faible (si inactif) :** Les 3 LEDs ont une pulsation lente jaune.
+    - **État non géré :** Toutes les LEDs externes sont éteintes.
+

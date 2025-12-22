@@ -9,12 +9,11 @@
 #include <SPI.h>
 #include <SD.h>
 #include <FS_MX1508.h>
-#include <Servo.h>
+#include <Esp32Servo.h>
 #include <LSM303.h>
 #include <VL53L1X.h>
 #include <DFRobot_RGBLCD1602.h>
 #include <Adafruit_NeoPixel.h>
-#include <BluetoothSerial.h>
 
 // Bluepad32 library. It provides its own extern instance "BP32".
 #include <Bluepad32.h>
@@ -25,10 +24,9 @@
 extern MX1508 motorA;
 extern MX1508 motorB;
 extern Servo Servodirection;
-extern LSM303 compass;
-extern DFRobot_RGBLCD1602 lcd;
-extern VL53L1X vl53;
-extern BluetoothSerial SerialBT;
+extern LSM303 *compass;
+extern DFRobot_RGBLCD1602 *lcd;
+extern VL53L1X *vl53;
 extern Adafruit_NeoPixel pixels;
 
 // Forward declaration for Tourelle

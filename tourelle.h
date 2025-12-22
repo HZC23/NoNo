@@ -2,7 +2,7 @@
 #ifndef TOURELLE_H
 #define TOURELLE_H
 
-#include <Servo.h>
+#include <Esp32Servo.h>
 #include "config.h" // Include for constants if needed
 
 class Tourelle {

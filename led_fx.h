@@ -22,15 +22,21 @@ inline void led_fx_init() {
     pixels.show();
 }
 
-inline void led_fx_set_all(uint8_t r, uint8_t g, uint8_t b) {
-    for(int i=0; i<NEOPIXEL_COUNT; i++) {
-        pixels.setPixelColor(i, pixels.Color(r, g, b));
+// Helper to set color on the 3 visible LEDs only (indices 1, 2, 3)
+inline void led_fx_set_visible_only(uint32_t color) {
+    for(int i = 1; i < NEOPIXEL_COUNT; i++) {
+        pixels.setPixelColor(i, color);
     }
+}
+
+// Sets all VISIBLE pixels to a specific color
+inline void led_fx_set_all(uint8_t r, uint8_t g, uint8_t b) {
+    led_fx_set_visible_only(pixels.Color(r, g, b));
     pixels.show();
 }
 
 inline void led_fx_off() {
-    pixels.clear();
+    pixels.clear(); // Clears all LEDs (0-3)
     pixels.show();
 }
 
@@ -44,53 +50,59 @@ inline void led_fx_update(const Robot& robot) {
     }
     last_update = millis();
 
+    // Clear all LEDs first to ensure a clean slate, especially for the internal one.
+    pixels.clear();
+
+    // --- EFFECT LOGIC ---
+
     // Priority 1: Critical Battery
     if (robot.batteryIsCritical) {
-        // Fast blinking red
-        uint32_t color = (millis() % 500 < 250) ? pixels.Color(255, 0, 0) : pixels.Color(0, 0, 0);
-        pixels.fill(color);
+        uint32_t color = (millis() % 500 < 250) ? pixels.Color(255, 0, 0) : 0;
+        led_fx_set_visible_only(color);
         pixels.show();
         return;
     }
     
     // Priority 2: Cliff Detected
     if (robot.currentState == CLIFF_DETECTED) {
-        // Blinking Orange
-        uint32_t color = (millis() % 1000 < 500) ? pixels.Color(255, 165, 0) : pixels.Color(0, 0, 0);
-        pixels.fill(color);
+        uint32_t color = (millis() % 1000 < 500) ? pixels.Color(255, 165, 0) : 0;
+        led_fx_set_visible_only(color);
         pixels.show();
         return;
     }
 
     // Priority 3: Obstacle Avoidance / Sentry Mode
     if (robot.currentState == OBSTACLE_AVOIDANCE) {
-        // "Cylon" eye effect
-        static int eye_pos = 0;
+        // "Cylon" eye effect on visible LEDs (1-3)
+        static int eye_pos = 1;
         static int eye_dir = 1;
-        pixels.clear();
         pixels.setPixelColor(eye_pos, pixels.Color(255, 0, 0));
-        pixels.show();
+        
         eye_pos += eye_dir;
-        if (eye_pos == NEOPIXEL_COUNT -1 || eye_pos == 0) {
+        // Constrain to visible LEDs: 1, 2, 3
+        if (eye_pos > (NEOPIXEL_COUNT - 1) || eye_pos < 1) {
             eye_dir *= -1; // reverse direction
+            eye_pos += eye_dir * 2; // correct position after reversing
         }
+        pixels.show();
         return;
     }
 
     if (robot.currentState == SENTRY_MODE) {
         if(robot.sentryState == SENTRY_TRACKING) {
             uint32_t color = (millis() % 200 < 100) ? pixels.Color(255, 0, 0) : pixels.Color(255, 255, 0);
-            pixels.fill(color);
+            led_fx_set_visible_only(color);
         } else {
-             // "Cylon" eye effect in blue
-            static int eye_pos = 0;
+             // "Cylon" eye effect in blue on visible LEDs (1-3)
+            static int eye_pos = 1;
             static int eye_dir = 1;
-            pixels.clear();
             pixels.setPixelColor(eye_pos, pixels.Color(0, 0, 255));
-            pixels.show();
+            
             eye_pos += eye_dir;
-            if (eye_pos >= NEOPIXEL_COUNT - 1) eye_dir = -1;
-            if (eye_pos <= 0) eye_dir = 1;
+            if (eye_pos > (NEOPIXEL_COUNT - 1) || eye_pos < 1) {
+                eye_dir *= -1;
+                eye_pos += eye_dir * 2;
+            }
         }
         pixels.show();
         return;
@@ -99,43 +111,44 @@ inline void led_fx_update(const Robot& robot) {
     // Default states
     switch (robot.currentState) {
         case IDLE: {
-            // Breathing blue
+            // Breathing blue on visible LEDs
             float breath = (sin(millis() / 2000.0 * 2 * PI) + 1) / 2;
-            pixels.fill(pixels.Color(0, 0, 128 * breath));
+            led_fx_set_visible_only(pixels.Color(0, 0, 128 * breath));
             break;
         }
         case MOVING_FORWARD:
         case MANUAL_FORWARD:
         case FOLLOW_HEADING:
         case SMART_AVOIDANCE:
-            pixels.fill(pixels.Color(0, 255, 0)); // Green
+            led_fx_set_visible_only(pixels.Color(0, 255, 0)); // Green
             break;
         case MOVING_BACKWARD:
         case MANUAL_BACKWARD:
-            pixels.fill(pixels.Color(255, 100, 0)); // Orange-ish
+            led_fx_set_visible_only(pixels.Color(255, 100, 0)); // Orange-ish
             break;
         case TURNING_LEFT:
         case MANUAL_TURNING_LEFT:
-            pixels.clear();
-            pixels.setPixelColor(0, pixels.Color(255, 255, 0)); // Left pixel yellow
+            // Leftmost visible LED is the LAST one in the strip (index 3)
+            pixels.setPixelColor(3, pixels.Color(255, 255, 0)); // Yellow
             break;
         case TURNING_RIGHT:
         case MANUAL_TURNING_RIGHT:
-            pixels.clear();
-            pixels.setPixelColor(NEOPIXEL_COUNT - 1, pixels.Color(255, 255, 0)); // Right pixel yellow
+            // Rightmost visible LED is the FIRST visible one (index 1)
+            pixels.setPixelColor(1, pixels.Color(255, 255, 0)); // Yellow
             break;
         case CALIBRATING_COMPASS:
-            // Rainbow cycle
-            pixels.rainbow(millis() / 10);
+            // Rainbow cycle on visible LEDs
+            for(int i=1; i<NEOPIXEL_COUNT; i++) {
+                pixels.setPixelColor(i, pixels.gamma32(pixels.ColorHSV(((i * 256 / 3) + (millis()/10)) & 255, 255, 255)));
+            }
             break;
         default:
              // Low battery indicator (slow pulsing yellow) if idle
             if (robot.batteryIsLow) {
                 uint32_t color = (millis() % 2000 < 1000) ? pixels.Color(150, 150, 0) : pixels.Color(30, 30, 0);
-                pixels.fill(color);
+                led_fx_set_visible_only(color);
             } else {
-                // Default to off if state is not handled
-                pixels.clear();
+                // Default to off (already cleared)
             }
             break;
     }

@@ -49,7 +49,6 @@ Le fichier `terminal.h` contient une nouvelle implémentation (actuellement dés
 | `HL` | `ON` / `OFF` | Contrôle du phare. |
 | `M` | `AVOID`, `SENTRY`, `IDLE` | Changement de mode. |
 | `S` | `200` | Réglage de la vitesse cible. |
-| `MUSIC`| `PLAY` / `STOP` | Contrôle de la lecture de musique. |
 
 > **Note :** Ce protocole n'est pas appelé dans la boucle principale (`loop`) et n'est donc pas fonctionnel en l'état.
 

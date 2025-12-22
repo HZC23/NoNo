@@ -40,11 +40,25 @@ enum SentryState {
   SENTRY_ALARM
 };
 
+enum CommunicationMode {
+  COMM_MODE_SERIAL,
+  COMM_MODE_XBOX
+};
+
+// Enum for the sub-states of the emergency evasion maneuver
+enum EvasionState {
+  EVADE_START,
+  EVADE_BACKUP,
+  EVADE_PIVOT,
+  EVADE_FINISH
+};
+
 // Structure to hold the robot's state
 struct Robot {
     // State Machine
     RobotState currentState = IDLE;
     ObstacleAvoidanceState obstacleAvoidanceState = AVOID_START;
+    EvasionState evasionState = EVADE_START;
     GroundCheckState groundCheckState = GC_START;
     SentryState sentryState = SENTRY_IDLE;
     RobotState stateBeforeGroundCheck = IDLE;
@@ -55,7 +69,7 @@ struct Robot {
     RobotState stateBeforeHeadAnimation = IDLE; // Store the state before starting an animation
 
     NavigationMode currentNavMode = MANUAL_CONTROL;
-    CommunicationMode currentCommMode = COMM_MODE_IDLE;
+    CommunicationMode activeCommMode = COMM_MODE_SERIAL;
     unsigned long lastActionTime = 0;
     unsigned long lastAppCommandTime = 0;
     bool actionStarted = false;
@@ -105,6 +119,10 @@ struct Robot {
     bool lastPIRState = LOW;
     int intruderAngle = 0;
 
+    // Curious Mode (Idle Animation)
+    int curiousTargetH = SCAN_CENTER_ANGLE;
+    int curiousTargetV = NEUTRE_TOURELLE;
+
     // Scanning
     int currentScanAngleH = SCAN_H_START_ANGLE;
     int currentScanAngleV = 90;
@@ -120,12 +138,21 @@ struct Robot {
     LSM303::vector<int16_t> magMin = {32767, 32767, 32767};
     LSM303::vector<int16_t> magMax = {-32768, -32768, -32768};
 
-    // LCD
+// LCD
     char lcdText[MAX_LCD_TEXT_LENGTH + 1];
+    char lcdFormattedText[128];                  // Text after word-wrap has been applied
+    
+    enum LcdAnimationState { ANIM_IDLE, ANIM_TYPEWRITER, ANIM_SCROLL_PAUSE };
+    LcdAnimationState lcdAnimationState = ANIM_IDLE; // Manages the animation sequence
+
+    unsigned long lcdAnimationNextCharTime = 0;  // Time to print the next character
+    int lcdAnimationIndex = 0;                   // Current character index in lcdFormattedText
+    int lcdCursorX = 0;                          // Current cursor column on the LCD
+    int lcdCursorY = 0;                          // Current cursor row on the LCD
+
     unsigned long lastLcdUpdateTime = 0;
     unsigned long customMessageSetTime = 0; // Time when a custom message was set
     unsigned long lastJokeDisplayTime = 0;
-    char musicFileName[64]; // To store the name of the music file to play
     int currentPage;
 
     // Profiling

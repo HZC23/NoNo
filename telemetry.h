@@ -1,48 +1,38 @@
 #ifndef TELEMETRY_H
 #define TELEMETRY_H
 
-#include <ArduinoJson.h> // This library is required!
+#include <ArduinoJson.h>
 #include "state.h"
-#include "support.h" // For readBatteryPercentage
+#include "support.h"
+#include "ble_service.h" // Always include for runtime switching
 
-// Sends the robot's current state as a JSON object over Serial
+// Sends the robot's current state as a JSON object
 inline void sendTelemetry(Robot& robot) {
     JsonDocument doc;
 
     // Get the string representation of the current state
-    const char* stateString;
-    switch (robot.currentState) {
-        case IDLE: stateString = "IDLE"; break;
-        case MOVING_FORWARD:
-        case MANUAL_FORWARD:
-            stateString = "MOVING_FORWARD"; break;
-        case MOVING_BACKWARD:
-        case MANUAL_BACKWARD:
-            stateString = "MOVING_BACKWARD"; break;
-        case TURNING_LEFT:
-        case MANUAL_TURNING_LEFT:
-            stateString = "TURNING_LEFT"; break;
-        case TURNING_RIGHT:
-        case MANUAL_TURNING_RIGHT:
-            stateString = "TURNING_RIGHT"; break;
-        case FOLLOW_HEADING: stateString = "FOLLOW_HEADING"; break;
-        case MAINTAIN_HEADING: stateString = "MAINTAIN_HEADING"; break;
-        case OBSTACLE_AVOIDANCE: stateString = "OBSTACLE_AVOIDANCE"; break;
-        case SCANNING: stateString = "SCANNING"; break;
-        default: stateString = "UNKNOWN"; break;
-    }
+    const char* stateString = stateToString(robot.currentState);
 
     // Populate the JSON document
     doc["state"] = stateString;
     doc["heading"] = robot.cap;
     doc["distance"] = robot.dusm;
     doc["distanceLaser"] = robot.distanceLaser;
-    doc["battery"] = readBatteryPercentage(); // Use the real function now
+    doc["battery"] = readBatteryPercentage();
     doc["speedTarget"] = robot.vitesseCible;
 
-    // Serialize JSON to Serial port
+    // --- Conditional Telemetry Output ---
+
+    // 1. Send to BLE App if in BLE mode and connected
+    if (robot.activeCommMode == COMM_MODE_BLE_APP && bleManager.isConnected()) {
+        String output;
+        serializeJson(doc, output);
+        bleManager.sendData(output);
+    }
+
+    // 2. Always send to Serial for debugging, unless specifically disabled
     serializeJson(doc, Serial);
-    Serial.println(); // Send a newline to indicate the end of the message
+    Serial.println();
 }
 
 #endif // TELEMETRY_H
