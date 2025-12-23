@@ -17,8 +17,23 @@
 #include "sd_utils.h"
 #include "turret_control.h"
 
+#include <Adafruit_NeoPixel.h>
+
 // Include the Xbox controller handler
 #include "xbox_controller_bluepad.h"
+
+Adafruit_NeoPixel _earlyLedStrip = Adafruit_NeoPixel(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+#if USB_MSC_ENABLED
+#include "USB.h"
+#include "USBMassStorage.h"
+
+#if USB_MSC_ENABLED
+USBMassStorage USBMSC;
+bool usbMscActive = false; // Flag to indicate if USB MSD is active
+#endif
+bool usbMscActive = false; // Flag to indicate if USB MSD is active
+#endif
 
 
 // --- RTOS ---
@@ -57,6 +72,35 @@ void setup() {
     if (DEBUG_MODE) Serial.println("--- NONO BOOTING ---");
     startTime = millis();
 
+    // Init VBAT pin early for initial battery check
+    pinMode(VBAT, INPUT);
+
+    // Init early LED strip for boot feedback
+    _earlyLedStrip.begin();
+    _earlyLedStrip.show(); // Initialize all pixels to 'off'
+
+    // --- CRITICAL EARLY BATTERY CHECK ---
+    // If battery is too low, halt here until it's charged.
+    // LCD and other I2C devices are not yet initialized.
+    static bool ledState = false; // To toggle LED
+    while (readBatteryPercentage() < CRITICAL_BATTERY_LEVEL) {
+      Serial.println(F("CRITICAL: Batterie trop faible pour initialiser. Chargez SVP!"));
+
+      ledState = !ledState; // Toggle state
+      if (ledState) {
+        _earlyLedStrip.setPixelColor(0, _earlyLedStrip.Color(255, 0, 0)); // Red
+      } else {
+        _earlyLedStrip.setPixelColor(0, _earlyLedStrip.Color(0, 0, 0));   // Off
+      }
+      _earlyLedStrip.show();
+
+      delay(500); // Wait 5 seconds before re-checking (and for blink)
+    }
+    // Turn off LED after loop exits
+    _earlyLedStrip.setPixelColor(0, _earlyLedStrip.Color(0, 0, 0));
+    _earlyLedStrip.show();
+    Serial.println(F("INFO: Batterie OK pour l'initialisation."));
+
     // Determine active communication mode from NVS
     bool nvsOpened = preferences.begin(NVS_NAMESPACE, true); // Try read-only first
     if (!nvsOpened) {
@@ -64,7 +108,7 @@ void setup() {
         nvsOpened = preferences.begin(NVS_NAMESPACE, false);
         if (nvsOpened) {
             // If successfully opened in write mode, save the default value
-            preferences.putInt(NVS_COMM_MODE_KEY, COMM_MODE_BLE_APP);
+            preferences.putInt(NVS_COMM_MODE_KEY, COMM_MODE_SERIAL);
             if (DEBUG_MODE) Serial.println("NVS namespace created and default comm mode set.");
         } else {
             // Critical error: NVS still couldn't open
@@ -76,12 +120,12 @@ void setup() {
     
     // Now that we've ensured the namespace exists (or tried our best), read the value.
     // If preferences.begin() failed completely, robot.activeCommMode will use the default.
-    robot.activeCommMode = (CommunicationMode)preferences.getInt(NVS_COMM_MODE_KEY, COMM_MODE_BLE_APP);
+    robot.activeCommMode = (CommunicationMode)preferences.getInt(NVS_COMM_MODE_KEY, COMM_MODE_SERIAL);
     preferences.end();
 
     // Create a mutex for thread-safe access to the robot object
     robotMutex = xSemaphoreCreateMutex();
-
+    Wire.begin(SDA_PIN, SCL_PIN);
     if (!Wire.begin(SDA_PIN, SCL_PIN)) {
         if (DEBUG_MODE) Serial.println("Erreur d'initialisation I2C");
     }
@@ -94,7 +138,12 @@ void setup() {
     vl53 = new VL53L1X();
 
     // Initialize SD card
-    if (!setupSDCard()) {
+    if (setupSDCard()) {
+      robot.sdCardReady = true;
+      loadConfig(robot); // Load configuration after SD card is ready
+      robot.initialSpeedAvg = robot.speedAvg; // Store initial configured average speed
+      robot.initialSpeedSlow = robot.speedSlow; // Store initial configured slow speed
+    } else {
       setLcdText(robot, "SD Card Error!");
       while (true);
     }
@@ -117,22 +166,30 @@ void setup() {
     pinMode(INTERUPTPIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(INTERUPTPIN), onBumperPress, FALLING);
     pinMode(PIN_PHARE, OUTPUT);
+    digitalWrite(PIN_PHARE, HIGH);
     
     led_fx_init();
 
     // Init Sensors & Servos
     sensor_init();
     compass_init(robot);
-    robot.compassInverted = COMPASS_IS_INVERTED;
 
-    // Initialize configurable parameters
-    robot.speedAvg = VITESSE_MOYENNE;
-    robot.speedSlow = VITESSE_LENTE;
+    if (!vl53->init()) {
+      Serial.println(F("CRITICAL: Failed to detect and initialize VL53L1X sensor!"));
+      setLcdText(robot, "Laser Error!");
+      while (1);
+    } else {
+      if(DEBUG_MODE) Serial.println("VL53L1X sensor initialized.");
+      robot.laserInitialized = true;
+      vl53->setDistanceMode(VL53L1X::Long);
+      vl53->setMeasurementTimingBudget(robot.laserTimingBudget);
+      vl53->startContinuous(robot.laserInterMeasurementPeriod);
+    }
 
     Servodirection.attach(PINDIRECTION);
-    Servodirection.write(NEUTRE_DIRECTION);
+    Servodirection.write(robot.servoNeutralDir);
     tourelle.attach();
-    tourelle.write(SCAN_CENTER_ANGLE, NEUTRE_TOURELLE);
+    tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
 
     if (robot.activeCommMode == COMM_MODE_XBOX) {
       xboxController.setHardware(motorA, motorB, tourelle);
@@ -140,7 +197,8 @@ void setup() {
 
     if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
-    delay(SCROLL_DELAY_MS);
+    setLcdText(robot, LCD_STARTUP_MESSAGE_3, true);
+    delay(1000);
     digitalWrite(PIN_PHARE, LOW);
 }
 
@@ -150,6 +208,16 @@ void setup() {
 void loop() {
 
   robot.loopStartTime = millis();
+
+#if USB_MSC_ENABLED
+  if (usbMscActive) {
+    // When USB MSD is active, robot logic is paused.
+    // The USB stack handles everything.
+    // We can add a delay here to reduce CPU usage if needed.
+    delay(10); 
+    return; 
+  }
+#endif
 
   if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
 
@@ -174,7 +242,38 @@ void loop() {
     checkSerial();
 
     updateBatteryStatus(robot);
-    led_fx_update(robot);
+
+    // --- CRITICAL BATTERY HANDLING ---
+    if (robot.batteryIsCritical) {
+      // This is a blocking loop that holds the robot until it's recharged.
+      Arret(); // Stop motors immediately.
+      Serial.println("CRITICAL: Batterie Vide. Robot en pause jusqu'a recharge.");
+      bool criticalMessageDisplayed = false; // Flag to control LCD message
+
+      while (robot.batteryIsCritical) {
+        // 1. Display message on LCD (only once)
+        if (!criticalMessageDisplayed) {
+          setLcdText(robot, "Batterie Vide!");
+          criticalMessageDisplayed = true;
+        }
+        handleLcdAnimations(robot); // ALWAYS process the animation engine for the text
+
+        // 2. Update LED effects (will show critical battery)
+        led_fx_update(robot);
+
+        // 3. Continuously re-check battery status
+        updateBatteryStatus(robot);
+
+        // 4. Small delay to prevent this loop from running too fast
+        delay(250); 
+      }
+      
+      // Once the loop is broken, it means the battery is OK.
+      Serial.println("INFO: Batterie OK. Reprise des operations.");
+      setLcdText(robot, "Batterie OK !");
+      handleLcdAnimations(robot);
+      delay(1000); // Let the "OK" message be seen
+    }
 
     // Update sensors
     sensor_update_task(robot);
@@ -190,9 +289,10 @@ void loop() {
     // Update LCD display
     displayJokesIfIdle(robot);
     updateLcdDisplay(robot);
+    handleLcdAnimations(robot);
 
     // Initial autonomous action
-    if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= INITIAL_AUTONOMOUS_DELAY_MS) {
+    if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - startTime >= robot.initialAutonomousDelay) {
         changeState(robot, OBSTACLE_AVOIDANCE);
         robot.initialActionTaken = true;
     }
@@ -224,31 +324,38 @@ void loop() {
   }
 }
 
-
 void updateBatteryStatus(Robot& robot) {
   int batteryLevel = readBatteryPercentage();
 
+  // Handle critical level first - this is an immediate stop condition
   if (batteryLevel < CRITICAL_BATTERY_LEVEL) {
     if (!robot.batteryIsCritical) {
       robot.batteryIsCritical = true;
-      robot.batteryIsLow = true;
+      robot.batteryIsLow = true; // A critical battery is also a low battery
     }
-    return;
+    return; // Exit immediately, no further checks
   }
 
-  if (batteryLevel < LOW_BATTERY_THRESHOLD) {
-    if (!robot.batteryIsLow) {
-      robot.speedAvg = VITESSE_LENTE;
-      robot.speedSlow = VITESSE_LENTE / 2;
-      robot.batteryIsLow = true;
+  // --- Hysteresis Logic ---
+  // If we are currently in a low or critical state...
+  if (robot.batteryIsLow || robot.batteryIsCritical) {
+    // ...we need to reach the higher RECHARGED_THRESHOLD to recover.
+    if (batteryLevel >= RECHARGED_THRESHOLD) {
+      robot.speedAvg = robot.initialSpeedAvg; // Restore initial average speed
+      robot.speedSlow = robot.initialSpeedSlow; // Restore initial slow speed
+      robot.batteryIsLow = false;
+      robot.batteryIsCritical = false; // Should be false already but set for safety
     }
   } 
+  // If we are not currently in a low battery state...
   else {
-    if (robot.batteryIsLow || robot.batteryIsCritical) {
-      robot.speedAvg = VITESSE_MOYENNE;
-      robot.speedSlow = VITESSE_LENTE;
-      robot.batteryIsLow = false;
-      robot.batteryIsCritical = false;
+    // ...we enter the low battery state only if we drop below the lower threshold.
+    if (batteryLevel < LOW_BATTERY_THRESHOLD) {
+      if (!robot.batteryIsLow) {
+        robot.speedAvg = robot.speedSlow; 
+        robot.speedSlow = robot.speedSlow / 2; 
+        robot.batteryIsLow = true;
+      }
     }
   }
 }

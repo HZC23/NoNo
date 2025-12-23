@@ -4,17 +4,17 @@ This guide describes the communication protocol between the Nono robot and its c
 
 ## 1. Connection
 
-The robot communicates via Bluetooth Low Energy (BLE) using a standard UART service. The app should connect directly using the following BLE service and characteristic UUIDs:
+The robot communicates via **Serial (USB)**. The app should connect to the robot's serial port with the following settings:
 
-*   **Service UUID:** `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-*   **Write Characteristic (App to Robot):** `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
-*   **Notify Characteristic (Robot to App):** `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+*   **Baud Rate:** `115200` (configurable in `config.h` as `SERIAL_BAUD_RATE`)
+*   **Data Bits:** 8
+*   **Parity:** None
+*   **Stop Bits:** 1
+*   **Flow Control:** None
 
 **Connection Flow:**
-1.  Scan for the specified Service UUID.
-2.  Connect to the GATT server of the detected device.
-3.  Enable notifications on the Notify characteristic to receive telemetry.
-4.  Write commands to the Write characteristic.
+1.  Establish a serial connection to the robot's USB port.
+2.  Once connected, commands can be sent, and telemetry can be received.
 
 ## 2. Command Format
 

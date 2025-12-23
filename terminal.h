@@ -13,6 +13,10 @@
 extern Robot robot; // Use the global robot object from NoNo.ino
 extern Preferences preferences; // Use the global preferences object from NoNo.ino
 
+#if USB_MSC_ENABLED
+extern bool usbMscActive;
+#endif
+
 // --- Defines for the command parser ---
 #define CMD_DELIMITER ":"
 

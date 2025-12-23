@@ -31,7 +31,8 @@ inline float readBatteryVoltage() {
     sum -= batteryReadings[readingsIndex];
 
     // Read current voltage and add it to the buffer and the sum
-    float currentVoltage = (analogRead(VBAT) * 3.3 / 4095.0) * ((18 +10) / 10.0);
+    int rawReading = analogRead(VBAT);
+    float currentVoltage = (rawReading * 3.3 / 4095.0) * ((15 +10) / 10.0);
     batteryReadings[readingsIndex] = currentVoltage;
     sum += currentVoltage;
 
@@ -75,7 +76,7 @@ inline int readBatteryPercentage() {
   float percentage = ((batteryVoltage - minVoltage) / (maxVoltage - minVoltage)) * 100.0;
   
   // Constrain the value between 0 and 100
-  return constrain((int)percentage, 0, 100);
+  return constrain(static_cast<int>(percentage), 0, 100);
 }
 
 inline bool isValidNumericInput(const char* input, int minVal, int maxVal) {
@@ -118,7 +119,7 @@ inline const char* stateToString(RobotState state) {
         case CHECKING_GROUND: return "CHECKING_GROUND";
         case CLIFF_DETECTED: return "CLIFF_DETECTED";
         case ANIMATING_HEAD: return "ANIMATING_HEAD";
-        case APP_CONTROL: return "APP_CONTROL";
+        case GAMEPAD_CONTROL: return "GAMEPAD_CONTROL";
         case EMERGENCY_EVASION: return "EMERGENCY_EVASION";
         case STUCK: return "STUCK";
         default: return "UNKNOWN";

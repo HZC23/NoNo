@@ -42,71 +42,45 @@
 #define PIN_PHARE     45
 // ====================================================
 
-#define PWM_MAX 255
+// --- Speed Settings ---
+#define VITESSE_MOYENNE 200         // Standard forward speed (PWM 0-255)
+#define VITESSE_LENTE 150           // Reduced speed for precision maneuvers
+#define VITESSE_ROTATION 200        // Speed applied during in-place rotations
+#define VITESSE_ROTATION_MAX 200    // Maximum allowable rotation speed
+#define MIN_SPEED_TO_MOVE 60        // Minimum PWM value required to overcome friction
+// --- Navigation Settings ---
+#define TOLERANCE_VIRAGE 2.0        // Acceptable heading error in degrees
+#define KP_HEADING 1.5              // Proportional gain for heading correction (steering sensitivity)
+#define SEUIL_BASCULE_DIRECTION 30.0 // Angle threshold to switch between steering and pivoting
+// --- Servo Angles ---
+#define NEUTRE_DIRECTION 85         // Servo angle for straight steering (center)
+#define NEUTRE_TOURELLE 90          // Servo angle for centered turret
+#define SERVO_DIR_MIN 8             // Minimum mechanical limit for steering servo
+#define SERVO_DIR_MAX 172           // Maximum mechanical limit for steering servo
+#define ANGLE_TETE_BASSE 120        // Angle for "head down" position
+#define ANGLE_SOL 140               // Angle for looking directly at the ground
 
-#define NEUTRE_DIRECTION 90
-#define NEUTRE_TOURELLE 90
-#define ULTRASONIC_OBSTACLE_THRESHOLD_CM 10 // Ultrasonic obstacle threshold in cm
-#define LASER_OBSTACLE_THRESHOLD_CM 20   // Laser obstacle threshold in cm
-#define INITIAL_CAP 0
-#define INITIAL_NCAP 0
-#define VITESSE_LENTE 150
-#define VITESSE_MOYENNE 200
-#define VITESSE_ROTATION 200
-#define VITESSE_ROTATION_MAX 200
-#define TOLERANCE_VIRAGE 2.0
-#define Kp_HEADING 1.5
-#define CALIBRATION_MOTEUR_B 1.0
-#define SCAN_CENTER_ANGLE 90
-#define COMPASS_IS_INVERTED false // Mettre à true si la boussole est montée à l'envers
+// --- Motor Physics ---
+#define CALIBRATION_MOTEUR_B 1.0    // Multiplier to balance Motor B speed relative to Motor A
+#define ACCEL_RATE 0.15             // Acceleration smoothing factor
+#define DIFF_STRENGTH 1.2           // Strength of differential steering effect
+#define FWD_DIFF_COEFF 1.4          // Coefficient for differential steering while moving forward
 
-// === SCANNING CONSTANTS ===
-#define SCAN_H_START_ANGLE 0
-#define SCAN_H_END_ANGLE 180
-#define SCAN_H_STEP 5
-#define SCAN_DELAY_MS 50
-#define SCAN_DISTANCE_ARRAY_SIZE 181 // To hold angles 0-180 inclusive
-#define QUICK_SCAN_LEFT_ANGLE 70
-#define QUICK_SCAN_RIGHT_ANGLE 110
+// --- Obstacle Avoidance ---
+#define AVOID_BACKUP_DURATION_MS 1000 // Time (ms) to reverse when avoiding an obstacle
+#define MIN_DIST_FOR_VALID_PATH 40    // Minimum distance (cm) required to consider a path valid
 
+// --- Turret ---
+#define TURRET_MOVE_TIME_MS 300     // Duration (ms) allocated for turret movement
 
-// === HYBRID STEERING ===
-#define SEUIL_BASCULE_DIRECTION 30.0 // Angle (deg) above which the robot pivots on the spot
-#define SERVO_DIR_MIN 8  // Max mechanical left angle for the servo
-#define SERVO_DIR_MAX 172 // Max mechanical right angle for the servo
+// --- Cliff Detection ---
+#define SEUIL_VIDE 50               // Sensor threshold to detect a drop-off/cliff
 
-// === TIMING & DELAYS ===
-#define CUSTOM_MESSAGE_DURATION_MS 5000 // Duration for custom LCD messages
-#define SENTRY_ALARM_DURATION_MS 5000
-#define SENTRY_ALARM_BLINK_DIVISOR 2
-#define SENTRY_SCAN_SPEED_MS 50
-#define SENTRY_TRACKING_DURATION_MS 5000
-#define SENTRY_DETECTION_RANGE_CM 150
-#define TURNING_TIMEOUT_MS 5000
-#define STALL_DETECTION_TIMEOUT_MS 7000 // Timeout to detect if robot is stuck
-#define CURIOUS_MODE_DELAY_MS 20000
-#define AVOID_BACKUP_DURATION_MS 1000
-#define SENTRY_FLASH_INTERVAL_MS 250
-#define TURRET_MOVE_TIME_MS 200
-
-// Angles for the turret to look into a turn
-#define TURNING_LOOK_LEFT_ANGLE 135
-#define TURNING_LOOK_RIGHT_ANGLE 45
-
-
-
-#define MM_TO_CM_DIVISOR 10
-#define VL53L1X_TIMING_BUDGET_US 50000
-#define VL53L1X_INTER_MEASUREMENT_PERIOD_MS 50
-#define MAX_ULTRASONIC_DISTANCE 400 // Max valid distance in cm (e.g., 400cm = 4m)
-#define ULTRASONIC_PING_INTERVAL_MS 60 // Minimum time between pings
-#define ULTRASONIC_PULSE_TIMEOUT_US 25000 // Max wait time for echo in µs (25ms ~ 4.3m)
-#define ULTRASONIC_TRIGGER_PULSE_LOW_US 2
-#define ULTRASONIC_TRIGGER_PULSE_HIGH_US 10
-#define ULTRASONIC_DURATION_TO_CM_DIVISOR 58
-#define ULTRASONIC_ERROR_VALUE -1
-
-
+// --- Laser Sensor ---
+#define VL53L1X_TIMING_BUDGET_US 50000          // Time budget (us) for laser sensor measurement
+#define VL53L1X_INTER_MEASUREMENT_PERIOD_MS 50  // Interval (ms) between laser measurements
+// --- Initialization ---
+#define INITIAL_AUTONOMOUS_DELAY_MS 10000       // Delay (ms) before autonomous mode starts
 // === COMPASS CONSTANTS ===
 #define COMPASS_READ_INTERVAL_MS 50
 #define COMPASS_CALIBRATION_DURATION_MS 15000
@@ -138,6 +112,7 @@
 #define NIMH_MIN_VOLTAGE 6.0 // 1.0V per cell, discharged
 
 #define LOW_BATTERY_THRESHOLD 20 // %
+#define RECHARGED_THRESHOLD 30   // % Threshold to exit low battery state (hysteresis)
 #define ANGLE_TETE_BASSE 120 // "Sad" head angle
 
 
@@ -229,6 +204,9 @@ enum NavigationMode {
 // === NON-VOLATILE STORAGE (NVS) ===
 #define NVS_NAMESPACE "nono-cfg"
 #define NVS_COMM_MODE_KEY "comm_mode"
+
+// === USB Mass Storage ===
+#define USB_MSC_ENABLED false // Set to true to enable USB Mass Storage functionality
 
 
 // === RTOS & TASK CONSTANTS ===

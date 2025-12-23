@@ -59,45 +59,63 @@ inline void _applyWordWrap(const char* in, char* out, size_t bufferSize, int lin
 
 
 /**
- * @brief Sets the target text for the LCD and starts the animation.
+ * @brief Définit le texte cible pour le LCD.
+ * @param isContinuation Si false (par défaut), l'écran est vidé et on recommence à (0,0).
  */
-inline void setLcdText(Robot& robot, const char* text) {
-    // 1. If text is identical and animation is idle, do nothing.
+inline void setLcdText(Robot& robot, const char* text, bool isContinuation = false) {
+    // Guard to prevent flickering by not re-rendering the same idle text
     if (robot.lcdAnimationState == Robot::LcdAnimationState::ANIM_IDLE && strncmp(text, robot.lcdText, MAX_LCD_TEXT_LENGTH) == 0) {
         return;
     }
     
-    // Prevent changing text while a joke is being displayed
+    // 1. Si c'est un nouveau message (pas une suite)
+    if (!isContinuation) {
+        // Force l'arrêt de l'animation en cours
+        robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_IDLE;
+        
+        // Nettoyage complet des tampons pour éviter les "fantômes" de texte
+        memset(robot.lcdText, 0, MAX_LCD_TEXT_LENGTH + 1);
+        memset(robot.lcdFormattedText, 0, sizeof(robot.lcdFormattedText));
+
+        // Réinitialisation des positions de l'animation
+        robot.lcdAnimationIndex = 0;
+        robot.lcdCursorX = 0;
+        robot.lcdCursorY = 0;
+
+        // Nettoyage physique de l'écran
+        lcd->clear();
+        lcd->setCursor(0, 0);
+    }
+
+    // 2. Vérification si le texte est identique (pour éviter de relancer inutilement)
+    if (isContinuation && strncmp(text, robot.lcdText, MAX_LCD_TEXT_LENGTH) == 0) {
+        return;
+    }
+    
+    // Protection contre le spam pendant les blagues
     if (millis() - robot.lastJokeDisplayTime < (LCD_JOKE_INTERVAL_MS - 100)) {
         return;
     }
 
-    // 2. The text has changed. Copy the new raw text.
-    strncpy(robot.lcdText, text, MAX_LCD_TEXT_LENGTH);
-    robot.lcdText[MAX_LCD_TEXT_LENGTH] = '\0'; // Ensure null termination
-
-    // 3. Apply word wrap to the raw text.
-    _applyWordWrap(robot.lcdText, robot.lcdFormattedText, sizeof(robot.lcdFormattedText), LCD_LINE_LENGTH);
-    if (DEBUG_MODE) {
-        Serial.println("--- LCD DEBUG: setLcdText ---");
-        Serial.print("Raw In: '"); Serial.print(robot.lcdText); Serial.println("'");
-        Serial.print("Wrapped: '"); Serial.print(robot.lcdFormattedText); Serial.println("'");
+    // 3. Copie du nouveau texte (ou ajout si c'est une suite)
+    if (!isContinuation) {
+        strncpy(robot.lcdText, text, MAX_LCD_TEXT_LENGTH);
+    } else {
+        // Optionnel : logique pour concaténer si vous gérez des messages longs en plusieurs fois
+        strncat(robot.lcdText, text, MAX_LCD_TEXT_LENGTH - strlen(robot.lcdText) - 1);
     }
+    robot.lcdText[MAX_LCD_TEXT_LENGTH] = '\0';
 
-    // 4. Reset and start the animation state.
+    // 4. Application du Word Wrap
+    _applyWordWrap(robot.lcdText, robot.lcdFormattedText, sizeof(robot.lcdFormattedText), LCD_LINE_LENGTH);
+
+    // 5. Lancement de l'animation
     robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_TYPEWRITER;
-    robot.lcdAnimationIndex = 0;
     robot.lcdAnimationNextCharTime = millis();
-    robot.lcdCursorX = 0;
-    robot.lcdCursorY = 0;
-
-    lcd->clear();
-    lcd->setCursor(0, 0);
 }
 
-
 /**
- * @brief The core animation engine for the LCD. MUST be called in the main loop.
+ * @brief Moteur d'animation pour l'écran LCD. Doit être appelé dans la boucle principale.
  */
 inline void handleLcdAnimations(Robot& robot) {
     unsigned long currentTime = millis();
@@ -106,94 +124,125 @@ inline void handleLcdAnimations(Robot& robot) {
         return;
     }
 
-    if (DEBUG_MODE) {
-        Serial.print("LCD_DEBUG: State="); Serial.print(robot.lcdAnimationState);
-        Serial.print(" | Index="); Serial.print(robot.lcdAnimationIndex);
-    }
+    // --- DEBUG OPTIONNEL ---
+    // if (DEBUG_MODE) { ... } (Retiré pour la clarté, à remettre si besoin)
 
     switch(robot.lcdAnimationState) {
+        // ---------------------------------------------------------
+        // ÉTAT 1 : TYPEWRITER (Effet machine à écrire)
+        // ---------------------------------------------------------
         case Robot::LcdAnimationState::ANIM_TYPEWRITER: {
             if (currentTime < robot.lcdAnimationNextCharTime) {
-                if (DEBUG_MODE) Serial.println(" | Waiting for next char time.");
                 return;
             }
 
             char nextChar = robot.lcdFormattedText[robot.lcdAnimationIndex];
-            if (DEBUG_MODE) { Serial.print(" | Char='"); Serial.print(nextChar); Serial.println("'"); }
 
+            // 1. Fin du texte
             if (nextChar == '\0') {
-                // End of all text.
                 robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_IDLE;
                 robot.lastLcdUpdateTime = currentTime;
-                if (DEBUG_MODE) Serial.println("LCD_DEBUG: Animation finished, moving to IDLE.");
                 return;
             }
 
+            // 2. Gestion du saut de ligne
             if (nextChar == '\n') {
                 robot.lcdCursorY++;
                 robot.lcdCursorX = 0;
 
-                // If we've filled the screen, pause for scrolling.
+                // Si on dépasse le nombre de lignes de l'écran (ex: on passe de la ligne 1 à 2 sur un écran 2 lignes)
                 if (robot.lcdCursorY >= LCD_ROWS) {
+                    // Vérifier s'il reste du texte après ce saut de ligne
                     if (robot.lcdFormattedText[robot.lcdAnimationIndex + 1] != '\0') {
+                        // On pause pour laisser l'utilisateur lire avant de scroller
                         robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_SCROLL_PAUSE;
-                        robot.lastLcdUpdateTime = currentTime; // This is the trigger for the pause delay.
-                        if (DEBUG_MODE) Serial.println("LCD_DEBUG: End of page, moving to SCROLL_PAUSE.");
+                        robot.lastLcdUpdateTime = currentTime; 
                     } else {
+                        // C'était juste un \n à la toute fin du texte
                         robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_IDLE;
                         robot.lastLcdUpdateTime = currentTime;
-                        if (DEBUG_MODE) Serial.println("LCD_DEBUG: Animation finished (end of page), moving to IDLE.");
                     }
-                    return;
+                    return; // On sort pour attendre la pause ou finir
                 }
+                
+                // Sinon, on déplace juste le curseur matériel
                 lcd->setCursor(robot.lcdCursorX, robot.lcdCursorY);
 
             } else {
-                // Print the character.
+                // 3. Impression du caractère normal
                 lcd->print(nextChar);
                 robot.lcdCursorX++;
+                
+                // Correction ici : On utilise une valeur en dur ou une constante existante
+                if (robot.lcdCursorX >= 16) { // Remplace 16 par LCD_LINE_LENGTH si disponible
+                     robot.lcdCursorX = 0;
+                     robot.lcdCursorY++; 
+                     lcd->setCursor(robot.lcdCursorX, robot.lcdCursorY);
+                }
             }
 
+            // Préparation caractère suivant
             robot.lcdAnimationIndex++;
             robot.lcdAnimationNextCharTime = currentTime + LCD_TYPEWRITER_DELAY_MS;
             break;
         }
 
+        // ---------------------------------------------------------
+        // ÉTAT 2 : SCROLL PAUSE (Le scroll intelligent)
+        // ---------------------------------------------------------
         case Robot::LcdAnimationState::ANIM_SCROLL_PAUSE: {
-            if (DEBUG_MODE) { Serial.print(" | Time since update: "); Serial.println(currentTime - robot.lastLcdUpdateTime); }
             if (currentTime - robot.lastLcdUpdateTime >= SCROLL_DELAY_MS) {
-                if (DEBUG_MODE) Serial.println("LCD_DEBUG: Scroll delay finished. Executing scroll.");
-                // --- Perform the scroll animation ---
-                int line_start_index = -1;
-                int newline_count = 0;
-                for (int i = 0; i < robot.lcdAnimationIndex; ++i) {
-                    if (robot.lcdFormattedText[i] == '\n') {
-                        newline_count++;
-                        if (newline_count == robot.lcdCursorY - 1) {
-                            line_start_index = i + 1;
+                
+                // --- LOGIQUE DE SCROLL AMÉLIORÉE ---
+                
+                lcd->clear(); // On efface tout pour redessiner proprement
+
+                // Objectif : Retrouver le début des (LCD_ROWS - 1) dernières lignes
+                // On scanne en arrière depuis le caractère actuel (le '\n' qui a déclenché le scroll)
+                
+                int linesToKeep = LCD_ROWS - 1; // Sur un écran 2 lignes, on garde 1 ligne (la du bas devient celle du haut)
+                int scanIndex = robot.lcdAnimationIndex - 1; // On regarde avant le \n actuel
+                int foundNewlines = 0;
+                int startPrintIndex = 0; // Par défaut début du texte si on ne trouve pas assez de lignes
+
+                // Backtracking pour trouver le bon point de départ
+                while (scanIndex >= 0) {
+                    if (robot.lcdFormattedText[scanIndex] == '\n') {
+                        foundNewlines++;
+                        if (foundNewlines == linesToKeep) {
+                            startPrintIndex = scanIndex + 1; // Le texte commence juste après ce \n
                             break;
                         }
                     }
+                    scanIndex--;
                 }
+
+                // Réimpression instantanée des lignes conservées (décalées vers le haut)
+                lcd->setCursor(0, 0);
+                int tempCursorY = 0;
                 
-                if (line_start_index != -1) {
-                    char prev_line[LCD_LINE_LENGTH + 1] = {0};
-                    int j = 0;
-                    for (int i = line_start_index; robot.lcdFormattedText[i] != '\n' && robot.lcdFormattedText[i] != '\0' && j < LCD_LINE_LENGTH; ++i, ++j) {
-                        prev_line[j] = robot.lcdFormattedText[i];
+                // On réimprime du point trouvé jusqu'au caractère actuel
+                for (int i = startPrintIndex; i < robot.lcdAnimationIndex; i++) {
+                    char c = robot.lcdFormattedText[i];
+                    if (c == '\n') {
+                        tempCursorY++;
+                        lcd->setCursor(0, tempCursorY);
+                    } else {
+                        lcd->print(c);
                     }
-                    lcd->clear();
-                    lcd->setCursor(0, 0);
-                    lcd->print(prev_line);
-                    robot.lcdCursorY = 1;
-                    robot.lcdCursorX = 0;
-                    lcd->setCursor(robot.lcdCursorX, robot.lcdCursorY);
                 }
-                
+
+                // Mise à jour de l'état du robot pour continuer sur la dernière ligne
+                robot.lcdCursorX = 0;
+                robot.lcdCursorY = LCD_ROWS - 1; // On se place sur la dernière ligne physique
+                lcd->setCursor(robot.lcdCursorX, robot.lcdCursorY);
+
+                // Reprise de l'animation machine à écrire
                 robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_TYPEWRITER;
+                
+                // IMPORTANT : On saute le '\n' qui a causé le scroll, on passe au char suivant
                 robot.lcdAnimationIndex++; 
-                robot.lcdAnimationNextCharTime = currentTime;
-                if (DEBUG_MODE) Serial.println("LCD_DEBUG: Scroll complete, moving back to TYPEWRITER.");
+                robot.lcdAnimationNextCharTime = currentTime + LCD_TYPEWRITER_DELAY_MS;
             }
             break;
         }
@@ -253,6 +302,8 @@ inline void updateLcdDisplay(Robot& robot) {
             snprintf(displayBuffer, sizeof(displayBuffer), "Etat: IDLE. En attente de vos ordres.");
             break;
         case MOVING_FORWARD:
+            snprintf(displayBuffer, sizeof(displayBuffer), "J'avance vers le cap %d", robot.cap);
+            break;
         case MANUAL_FORWARD:
             snprintf(displayBuffer, sizeof(displayBuffer), "J'avance vers le cap %d", robot.cap);
             break;

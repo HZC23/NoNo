@@ -52,7 +52,7 @@ void processCommand(String command) {
                 if (velocity == 0 && turn == 0) {
                     changeState(robot, IDLE);
                 } else {
-                    changeState(robot, APP_CONTROL);
+                    changeState(robot, GAMEPAD_CONTROL);
                 }
                 robot.lastAppCommandTime = millis();
             }

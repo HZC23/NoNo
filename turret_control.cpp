@@ -77,11 +77,18 @@ int findClearestPath() {
     int bestAngle = -1;
     int maxDistance = 0;
     
+    if (DEBUG_MODE) Serial.println("Scanning for clearest path...");
+
     for (int angle = WIDE_SCAN_MIN_ANGLE; angle <= WIDE_SCAN_MAX_ANGLE; angle += 10) {
         tourelle.write(angle, turretTiltAngle); // Preserve current tilt
         delay(50);
         int currentDistance = vl53->readRangeContinuousMillimeters() / 10;
         if (currentDistance == 0) currentDistance = 500; // Treat out-of-range as far
+        
+        if (DEBUG_MODE) {
+            Serial.printf("  Angle: %d, Distance: %d cm\n", angle, currentDistance);
+        }
+
         if (currentDistance > maxDistance) {
             maxDistance = currentDistance;
             bestAngle = angle;
@@ -94,6 +101,12 @@ int findClearestPath() {
         tourelle.write(90, turretTiltAngle);
     }
     
+    if (DEBUG_MODE) {
+        Serial.printf("Scan complete. Best Angle: %d, Max Distance: %d cm. Threshold: %d cm\n", 
+                      bestAngle, maxDistance, LASER_OBSTACLE_THRESHOLD_CM);
+        Serial.printf("Returning: %d\n", (maxDistance > LASER_OBSTACLE_THRESHOLD_CM) ? bestAngle : -1);
+    }
+
     // Only return a valid angle if the path is reasonably clear
     return (maxDistance > LASER_OBSTACLE_THRESHOLD_CM) ? bestAngle : -1;
 }

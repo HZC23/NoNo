@@ -33,6 +33,31 @@ float getPitch(Robot& robot); // New prototype for pitch calculation
 void displayCompassInfo(Robot& robot);
 
 
+inline bool detectImpactOrStall(Robot& robot) {
+    // Detects sudden physical impacts or prolonged stall conditions using accelerometer data.
+    // If a significant 'jerk' (rate of change of acceleration) is detected, it suggests an impact.
+    // This helps the robot react quickly to collisions or getting stuck.
+    
+    static float lastAccelX = 0;
+    static float lastAccelY = 0;
+    
+    compass->readAcc();
+    float currentX = compass->a.x;
+    float currentY = compass->a.y; 
+    
+    float jerk = abs(currentX - lastAccelX) + abs(currentY - lastAccelY);
+    lastAccelX = currentX;
+    lastAccelY = currentY;
+
+    // If the jerk is huge, it's an immediate impact
+    if (jerk > 12000) { // Value needs calibration for specific sensor sensitivity
+        if(DEBUG_MODE) Serial.println("IMU: IMPACT DETECTED!");
+        return true;
+    }
+    return false;
+}
+
+
 // --- IMPLEMENTATIONS ---
 
 // New function to calculate pitch angle from accelerometer

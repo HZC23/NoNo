@@ -82,14 +82,43 @@ struct Robot {
     int vitesseCible = 0;
     int speedAvg = VITESSE_MOYENNE; // Default average speed
     int speedSlow = VITESSE_LENTE;   // Default slow speed
+    int initialSpeedAvg = VITESSE_MOYENNE; // Stores the initial average speed (from config or default)
+    int initialSpeedSlow = VITESSE_LENTE;   // Stores the initial slow speed (from config or default)
+    int speedRotation = VITESSE_ROTATION; // Default rotation speed, loaded from config
+    float turnTolerance = TOLERANCE_VIRAGE; // Default turn tolerance, loaded from config
+    float KpHeading = Kp_HEADING; // Default Kp for heading, loaded from config
+    int speedRotationMax = VITESSE_ROTATION_MAX; // Max rotation speed, loaded from config
     bool hasReculed = false;
     bool controlInverted = false; // Flag for control inversion
     bool hasTurned = false;
+    // isStuckConfirmed: Flag set to true when the robot detects it is physically stuck (e.g., against a wall)
+    //                   Used for traction control and escape maneuvers.
+    bool isStuckConfirmed = false;
+    // currentSteeringBias: Stores the current steering angle relative to center (e.g., -30 to +30 degrees).
+    //                      Used by power steering to provide more power during sharp turns.
+    int currentSteeringBias = 0;
+    float pivotAngleThreshold = SEUIL_BASCULE_DIRECTION;
+
+    // Motion Physics
+    float motorBCalibration = CALIBRATION_MOTEUR_B;
+    int minSpeedToMove = MIN_SPEED_TO_MOVE;
+    float accelRate = ACCEL_RATE;
+    float diffStrength = DIFF_STRENGTH;
+    float fwdDiffCoeff = FWD_DIFF_COEFF;
+
 
     // Navigation
     float capCibleRotation = 0;
     int Ncap = INITIAL_NCAP;
     int cap = INITIAL_CAP;
+
+    // Servos
+    int servoNeutralDir = NEUTRE_DIRECTION;
+    int servoNeutralTurret = NEUTRE_TOURELLE;
+    int servoDirMin = SERVO_DIR_MIN;
+    int servoDirMax = SERVO_DIR_MAX;
+    int servoAngleHeadDown = ANGLE_TETE_BASSE;
+    int servoAngleGround = ANGLE_SOL;
 
     // Battery
     bool batteryIsLow = false;
@@ -108,9 +137,14 @@ struct Robot {
     int distanceLaser = 0;
     bool obstacleDetectedByLaser = false;
     bool laserInitialized = false;
+    unsigned long laserTimingBudget = VL53L1X_TIMING_BUDGET_US;
+    unsigned long laserInterMeasurementPeriod = VL53L1X_INTER_MEASUREMENT_PERIOD_MS;
+    int maxUltrasonicDistance = MAX_ULTRASONIC_DISTANCE;
+
 
     // Cliff Detection
     unsigned long lastCliffCheckTime = 0;
+    int seuilVide = SEUIL_VIDE;
     
     // Horizon Stabilization
     float currentPitch = 0.0;
@@ -129,6 +163,15 @@ struct Robot {
     unsigned long lastScanTime = 0;
     int scanDistances[SCAN_DISTANCE_ARRAY_SIZE]; // To store distances for angles 0-180
     int bestAvoidAngle;
+    float anglePenaltyFactor = ANGLE_PENALTY_FACTOR;
+
+    // Turret
+    unsigned long turretMoveTime = TURRET_MOVE_TIME_MS;
+    unsigned long turretScanDelay = SCAN_DELAY_MS;
+
+    // Obstacle Avoidance
+    unsigned long avoidBackupDuration = AVOID_BACKUP_DURATION_MS;
+    int minDistForValidPath = MIN_DIST_FOR_VALID_PATH;
 
     // Compass Calibration
     bool compassInitialized = false;
@@ -160,6 +203,9 @@ struct Robot {
     unsigned long terminalTime, sensorTaskTime, motorControlTime;
     unsigned long lastReportTime = 0;
     const unsigned long reportInterval = 2000;
+
+    // Initialization
+    unsigned long initialAutonomousDelay = INITIAL_AUTONOMOUS_DELAY_MS;
 };
 
 
