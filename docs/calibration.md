@@ -11,7 +11,7 @@ Le magnétomètre mesure le champ magnétique terrestre pour déterminer le cap.
 
 Ces interférences créent des distorsions ("hard-iron" et "soft-iron") qui rendent les lectures brutes du capteur inexactes. La calibration est le processus qui mesure ces distorsions et calcule des offsets pour les compenser, garantissant ainsi une navigation précise.
 
-**Sans une bonne calibration, les modes de navigation comme `GOTO` et `MAINTAIN_HEADING` ne fonctionneront pas correctement.**
+**Sans une bonne calibration, les modes de navigation comme `G:heading` (GOTO) ne fonctionneront pas correctement.**
 
 ---
 
@@ -26,11 +26,9 @@ La calibration est une procédure simple qui prend moins d'une minute.
 
 ### Étape 2 : Lancement de la Commande
 
-Envoyez la commande de calibration via le terminal série :
+Envoyez la commande de calibration via le terminal série, suivie d'une nouvelle ligne (`\n`) :
 
-| Commande | Action | Valeur |
-| :--- | :--- | :--- |
-| `CMD` | `CALIBRATE` | `COMPASS` |
+`E:CALIBRATE`
 
 Le robot entrera en mode calibration, et l'écran LCD affichera "Calibrating...".
 
@@ -74,21 +72,3 @@ Après 15 secondes, le robot arrêtera automatiquement la procédure.
 - L'écran LCD affichera "Calibration OK".
 
 Les données de calibration sont maintenant persistantes et seront chargées à chaque démarrage.
-
----
-
-## Commandes Associées
-
-| Commande | Action | Valeur | Description |
-| :--- | :--- | :--- | :--- |
-| `CMD` | `CALIBRATE` | `COMPASS` | Lance la procédure de calibration de 15 secondes. |
-| `CMD` | `RESET` | `CALIB` | **(Non implémenté)** Efface les données de calibration de l'EEPROM. Utile si vous déplacez le robot dans un environnement très différent. |
-
-## Dépannage
-
-- **Le cap est toujours incorrect :**
-    - Avez-vous tourné le robot assez lentement et dans toutes les directions ? Une rotation trop rapide ou incomplète donnera de mauvais résultats. Relancez la calibration.
-    - Y a-t-il une nouvelle source d'interférence près du robot ? (un nouveau composant, un objet métallique)
-- **Le robot ne semble pas calibrer :**
-    - Vérifiez que la commande `CMD:CALIBRATE:COMPASS\n` est bien envoyée.
-    - Observez l'écran LCD et le moniteur série pour des messages d'erreur.

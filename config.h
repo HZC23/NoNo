@@ -8,10 +8,10 @@
 // === CONFIGURATION ESP32-S3 LITE ===
 
 // --- CARTE SD (Bus SPI1) ---
-#define SD_CS_PIN     41 // Changed from 10
-#define SD_SCK        39 // Changed from 12
-#define SD_MISO       40 // Changed from 13
-#define SD_MOSI       38 // Changed from 11
+#define SD_CS_PIN     41
+#define SD_SCK        39
+#define SD_MISO       40
+#define SD_MOSI       38
 
 // --- BUS I2C ---
 #define SDA_PIN       10
@@ -42,17 +42,23 @@
 #define PIN_PHARE     45
 // ====================================================
 
-// --- Speed Settings ---
-#define VITESSE_MOYENNE 200         // Standard forward speed (PWM 0-255)
+#define PWM_MAX 255 // Max PWM value for motors
+
+// --- Default Movement Parameters (Overridden by config.txt) ---
 #define VITESSE_LENTE 150           // Reduced speed for precision maneuvers
+#define VITESSE_MOYENNE 200         // Standard forward speed (PWM 0-255)
 #define VITESSE_ROTATION 200        // Speed applied during in-place rotations
 #define VITESSE_ROTATION_MAX 200    // Maximum allowable rotation speed
 #define MIN_SPEED_TO_MOVE 60        // Minimum PWM value required to overcome friction
-// --- Navigation Settings ---
 #define TOLERANCE_VIRAGE 2.0        // Acceptable heading error in degrees
-#define KP_HEADING 1.5              // Proportional gain for heading correction (steering sensitivity)
+#define Kp_HEADING 1.5              // Proportional gain for heading correction (steering sensitivity)
+#define CALIBRATION_MOTEUR_B 1.0    // Multiplier to balance Motor B speed relative to Motor A
 #define SEUIL_BASCULE_DIRECTION 30.0 // Angle threshold to switch between steering and pivoting
-// --- Servo Angles ---
+#define ACCEL_RATE 0.15f            // Acceleration smoothing factor
+#define DIFF_STRENGTH 1.2f          // Strength of the electronic differential
+#define FWD_DIFF_COEFF 1.4f         // Coefficient for 4WD differential
+
+// --- Default Servo Parameters (Overridden by config.txt) ---
 #define NEUTRE_DIRECTION 85         // Servo angle for straight steering (center)
 #define NEUTRE_TOURELLE 90          // Servo angle for centered turret
 #define SERVO_DIR_MIN 8             // Minimum mechanical limit for steering servo
@@ -60,27 +66,55 @@
 #define ANGLE_TETE_BASSE 120        // Angle for "head down" position
 #define ANGLE_SOL 140               // Angle for looking directly at the ground
 
-// --- Motor Physics ---
-#define CALIBRATION_MOTEUR_B 1.0    // Multiplier to balance Motor B speed relative to Motor A
-#define ACCEL_RATE 0.15             // Acceleration smoothing factor
-#define DIFF_STRENGTH 1.2           // Strength of differential steering effect
-#define FWD_DIFF_COEFF 1.4          // Coefficient for differential steering while moving forward
-
-// --- Obstacle Avoidance ---
+// --- Default Obstacle Avoidance Parameters (Overridden by config.txt) ---
 #define AVOID_BACKUP_DURATION_MS 1000 // Time (ms) to reverse when avoiding an obstacle
 #define MIN_DIST_FOR_VALID_PATH 40    // Minimum distance (cm) required to consider a path valid
+#define ULTRASONIC_OBSTACLE_THRESHOLD_CM 10 // Ultrasonic obstacle threshold in cm
+#define LASER_OBSTACLE_THRESHOLD_CM 20   // Laser obstacle threshold in cm
 
-// --- Turret ---
+// --- Default Turret Parameters (Overridden by config.txt) ---
 #define TURRET_MOVE_TIME_MS 300     // Duration (ms) allocated for turret movement
+#define SCAN_DELAY_MS 50            // Delay between turret scan steps
+#define ANGLE_PENALTY_FACTOR 1.5f   // Penalty for angles further from the center.
 
-// --- Cliff Detection ---
+// --- Default Cliff Detection Parameters (Overridden by config.txt) ---
 #define SEUIL_VIDE 50               // Sensor threshold to detect a drop-off/cliff
+#define CLIFF_CHECK_INTERVAL_MS 100 // Interval between cliff checks
 
-// --- Laser Sensor ---
+// --- Default Laser Sensor Parameters (Overridden by config.txt) ---
 #define VL53L1X_TIMING_BUDGET_US 50000          // Time budget (us) for laser sensor measurement
 #define VL53L1X_INTER_MEASUREMENT_PERIOD_MS 50  // Interval (ms) between laser measurements
-// --- Initialization ---
+
+// --- Default Initialization Parameters (Overridden by config.txt) ---
 #define INITIAL_AUTONOMOUS_DELAY_MS 10000       // Delay (ms) before autonomous mode starts
+
+// === Other Constants ===
+#define INITIAL_CAP 0
+#define INITIAL_NCAP 0
+#define SCAN_H_START_ANGLE 0
+#define SCAN_H_END_ANGLE 180
+#define SCAN_H_STEP 10
+#define SCAN_DISTANCE_ARRAY_SIZE 181 // To hold angles 0-180 inclusive
+#define COMPASS_IS_INVERTED false // Mettre à true si la boussole est montée à l'envers
+#define MM_TO_CM_DIVISOR 10 // Conversion factor for millimeters to centimeters
+
+// --- Sensor Task Parameters ---
+#define ULTRASONIC_PING_INTERVAL_MS 60 // Minimum time between pings
+#define ULTRASONIC_PULSE_TIMEOUT_US 25000 // Max wait time for echo in µs (25ms ~ 4.3m)
+#define ULTRASONIC_TRIGGER_PULSE_LOW_US 2
+#define ULTRASONIC_TRIGGER_PULSE_HIGH_US 10
+#define ULTRASONIC_DURATION_TO_CM_DIVISOR 58
+#define ULTRASONIC_ERROR_VALUE -1
+
+// --- Timing & Delays ---
+#define CUSTOM_MESSAGE_DURATION_MS 5000 // Duration for custom LCD messages
+#define STALL_DETECTION_TIMEOUT_MS 7000 // Timeout to detect if robot is stuck
+
+// --- Sentry Mode Parameters ---
+#define SENTRY_SCAN_SPEED_MS 50
+#define SENTRY_DETECTION_RANGE_CM 150
+
+
 // === COMPASS CONSTANTS ===
 #define COMPASS_READ_INTERVAL_MS 50
 #define COMPASS_CALIBRATION_DURATION_MS 15000
@@ -113,7 +147,6 @@
 
 #define LOW_BATTERY_THRESHOLD 20 // %
 #define RECHARGED_THRESHOLD 30   // % Threshold to exit low battery state (hysteresis)
-#define ANGLE_TETE_BASSE 120 // "Sad" head angle
 
 
 #define SERIAL_BAUD_RATE 115200
@@ -124,16 +157,12 @@
 #define JSON_DOC_SIZE 200
 #define CMD_BUFFER_SIZE 64
 #define MAX_LCD_TEXT_LENGTH 64
-#define SCROLL_DELAY_MS     3000 // The display time of each page (in ms)
-#define LCD_IDLE_TIMEOUT_MS 5000 // 5 seconds of inactivity before jokes start
+#define SCROLL_DELAY_MS     2500 // The display time of each page (in ms)
+#define LCD_IDLE_TIMEOUT_MS 10000 // 5 seconds of inactivity before jokes start
 #define LCD_JOKE_INTERVAL_MS 5000 // Change joke every 5 seconds if still idle
 
-// === INITIALIZATION ===
-#define INITIAL_AUTONOMOUS_DELAY_MS 10000 // Delay before initial autonomous action at startup
+
 #define MAX_CONSECUTIVE_AVOID_MANEUVERS 3
-
-// === INITIALIZATION ===
-
 
 // === LCD MESSAGES ===
 #define LCD_TYPEWRITER_DELAY_MS 50
@@ -150,56 +179,11 @@
 #define HEAD_NOD_YES_ANGLE_DOWN 110
 #define HEAD_NOD_YES_CYCLE_DURATION_MS 200
 
-// === CLIFF DETECTION ===
-#define ANGLE_SOL 140 // Angle to look down at the ground (to be calibrated)
-#define SEUIL_VIDE 50 // If ground is further than 50cm, it's a cliff
-#define CLIFF_CHECK_INTERVAL_MS 500 // Check for cliff every 500ms when moving forward
 
 // === LOOP REGULATOR ===
 #define LOOP_TARGET_FREQUENCY 100 // Target frequency for the main loop in Hz
 #define LOOP_TARGET_PERIOD_MS (1000 / LOOP_TARGET_FREQUENCY)
 
-// === STATE & MODE DEFINITIONS ===
-enum RobotState {
-  IDLE,
-  MOVING_FORWARD,
-  MOVING_BACKWARD,
-  TURNING_LEFT,
-  TURNING_RIGHT,
-  MANUAL_FORWARD,
-  MANUAL_BACKWARD,
-  MANUAL_TURNING_LEFT,
-  MANUAL_TURNING_RIGHT,
-  OBSTACLE_AVOIDANCE,
-  WAITING_FOR_TURRET,
-  FOLLOW_HEADING,
-  MAINTAIN_HEADING,
-  
-  BACKING_UP_OBSTACLE, // New state for backing up from obstacle
-  SCANNING_FOR_PATH,   // New state for scanning for a new path
-  TURNING_TO_PATH,     // New state for turning to the new path
-  SMART_TURNING,
-  CALIBRATING_COMPASS,
-  SMART_AVOIDANCE,
-  SENTRY_MODE,
-  CHECKING_GROUND,
-  CLIFF_DETECTED,
-  ANIMATING_HEAD,
-  GAMEPAD_CONTROL,
-  EMERGENCY_EVASION, // State for bumper-triggered escape maneuver
-  STUCK                // State for when stall is detected
-} ;
-
-enum NavigationMode {
-  MANUAL_CONTROL,
-  AUTONOMOUS_CONTROL
-};
-
-// === COMMUNICATION MODE ===
-// The communication mode is now defined as an enum in state.h and set at runtime.
-
-// Set the active communication mode here
-// #define ACTIVE_COMM_MODE COMM_MODE_BLE_APP  // This is now set at runtime and stored in NVS
 
 // === NON-VOLATILE STORAGE (NVS) ===
 #define NVS_NAMESPACE "nono-cfg"
@@ -259,26 +243,90 @@ enum NavigationMode {
 #define ENABLE_PERSISTENT_MODE false // Set to true to make the robot continue its last action on disconnect. Use with caution!
 #define LCD_PERSISTENT_MODE_ACTIVE "Persistent Mode!" // LCD message when persistent mode is active
 
-// === HARDWARE LIBRARIES & EXTERN DECLARATIONS ===
-#include <FS_MX1508.h>
-#include <Esp32Servo.h>
-#include <LSM303.h>
-#include <VL53L1X.h>
-#include <DFRobot_RGBLCD1602.h>
-#include <Adafruit_NeoPixel.h>
 
-#include "tourelle.h"
+// === STATE & MODE DEFINITIONS ===
+enum RobotState {
+  IDLE,
+  MOVING_FORWARD,
+  MOVING_BACKWARD,
+  TURNING_LEFT,
+  TURNING_RIGHT,
+  MANUAL_FORWARD,
+  MANUAL_BACKWARD,
+  MANUAL_TURNING_LEFT,
+  MANUAL_TURNING_RIGHT,
+  OBSTACLE_AVOIDANCE,
+  WAITING_FOR_TURRET,
+  FOLLOW_HEADING,
+  MAINTAIN_HEADING,
+  
+  BACKING_UP_OBSTACLE, // New state for backing up from obstacle
+  SCANNING_FOR_PATH,   // New state for scanning for a new path
+  TURNING_TO_PATH,     // New state for turning to the new path
+  SMART_TURNING,
+  CALIBRATING_COMPASS,
+  SMART_AVOIDANCE,
+  SENTRY_MODE,
+  CHECKING_GROUND,
+  CLIFF_DETECTED,
+  ANIMATING_HEAD,
+  GAMEPAD_CONTROL,
+  EMERGENCY_EVASION, // State for bumper-triggered escape maneuver
+  STUCK                // State for when stall is detected
+} ;
 
-// Declare hardware objects as extern.
-// The actual objects are defined in NoNo.ino
-extern MX1508 motorA;
-extern MX1508 motorB;
-extern Servo Servodirection;
-extern LSM303 *compass;
-extern DFRobot_RGBLCD1602 *lcd;
-extern VL53L1X *vl53;
+enum NavigationMode {
+  MANUAL_CONTROL,
+  AUTONOMOUS_CONTROL
+};
 
-extern Tourelle tourelle;
+enum ObstacleAvoidanceState {
+  AVOID_START,
+  AVOID_QUICK_SCAN_LEFT,
+  AVOID_WAIT_FOR_LEFT_SCAN,
+  AVOID_QUICK_SCAN_RIGHT,
+  AVOID_WAIT_FOR_RIGHT_SCAN,
+  AVOID_CENTER_TURRET,
+  AVOID_WAIT_FOR_CENTER,
+  AVOID_FULL_SCAN_START,
+  AVOID_FULL_SCAN_STEP,
+  AVOID_FULL_SCAN_FINISH,
+  AVOID_TURN_TO_BEST_ANGLE,
+  AVOID_BACKUP,
+  AVOID_TURN_IN_PLACE,    // New state: turn in place to escape tight spots
+  AVOID_FINISH_TURN       // New state: wait for turn to complete
+};
 
+enum GroundCheckState {
+  GC_START,
+  GC_LOOK_DOWN,
+  GC_WAIT,
+  GC_CHECK,
+  GC_LOOK_UP,
+  GC_FINISH
+};
+
+enum HeadAnimationType { ANIM_NONE, ANIM_SHAKE_NO, ANIM_NOD_YES };
+
+enum SentryState {
+  SENTRY_IDLE,
+  SENTRY_SCAN_START,
+  SENTRY_SCAN_STEP,
+  SENTRY_TRACKING,
+  SENTRY_ALARM
+};
+
+enum CommunicationMode {
+  COMM_MODE_SERIAL,
+  COMM_MODE_XBOX
+};
+
+// Enum for the sub-states of the emergency evasion maneuver
+enum EvasionState {
+  EVADE_START,
+  EVADE_BACKUP,
+  EVADE_PIVOT,
+  EVADE_FINISH
+};
 
 #endif // CONFIG_H

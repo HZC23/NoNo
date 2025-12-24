@@ -1,94 +1,63 @@
-# Nono Robot - App Communication Guide
+# Nono Robot - App & Serial Communication Guide
 
-This guide describes the communication protocol between the Nono robot and its companion application.
+This guide describes the serial communication protocol for controlling the Nono robot.
 
 ## 1. Connection
 
-The robot communicates via **Serial (USB)**. The app should connect to the robot's serial port with the following settings:
+The robot communicates via **Serial (USB)**. A serial terminal or companion app can connect to the robot with the following settings:
 
-*   **Baud Rate:** `115200` (configurable in `config.h` as `SERIAL_BAUD_RATE`)
+*   **Baud Rate:** `115200`
 *   **Data Bits:** 8
 *   **Parity:** None
 *   **Stop Bits:** 1
-*   **Flow Control:** None
 
 **Connection Flow:**
 1.  Establish a serial connection to the robot's USB port.
-2.  Once connected, commands can be sent, and telemetry can be received.
+2.  Once connected, commands can be sent, and telemetry is received periodically.
 
 ## 2. Command Format
 
-All commands sent to the robot must be terminated with a newline character (`\n`). The commands are case-insensitive.
+All commands sent to the robot must be terminated with a newline character (`\n`). The command prefixes are case-insensitive.
 
-The general command format is:
+The general format is `KEY:VALUE\n`.
 
-`COMMAND:VALUE\n`
+## 3. Command Reference
 
-For example, to set the robot's speed, the command would be:
+| Prefix | Parameters | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `M` | `velocity,turn` | **Move**: Directly controls the motors. `velocity` is forward/backward (-255 to 255), `turn` is the turning component (-255 to 255). Non-sticky. | `M:150,50` |
+| `G` | `heading` | **Goto**: Puts the robot in `FOLLOW_HEADING` state to turn to the specified absolute heading (0-359 degrees). | `G:90` |
+| `S` | `speed` | **Speed**: Sets the manual target speed (`vitesseCible`) from 0-255. | `S:200` |
+| `CO` | `offset` | **Compass Offset**: Applies a permanent fine-tuning offset (in degrees) to the compass. | `CO:-5.5` |
+| `SM` | `XBOX` or `SERIAL` | **Set Mode**: Changes the primary control interface and reboots the robot. `XBOX` enables the controller, `SERIAL` disables it. | `SM:XBOX` |
+| `E` | `mode` | **State (État)**: Changes the robot's behavior state. See modes below. | `E:AVOID` |
+| `L` | `ON`, `OFF`, `TOGGLE` | **Light**: Controls the headlight. | `L:ON` |
 
-`S:200\n`
+### Available Modes for `E:` command
 
-Some commands don't require a value. For example, to toggle the obstacle avoidance mode, the command is:
-
-`AVOID\n`
-
-Manual control commands (like `V:value;D:value`) are non-sticky and must be sent continuously to maintain movement.
-
-## 3. Commands
-
-Here is a list of all the available commands:
-
-### Movement
-
-| Command | Description | Example |
-|---|---|---|
-| `V:value;D:value` | Sets the robot's velocity and direction using differential steering. `V` is the velocity from -100 to 100. `D` is the direction from -100 to 100. | `V:50;D:25\n` |
-| `S:value` | Sets the robot's target speed. `value` is an integer from 0 to 255. | `S:200\n` |
-
-### Modes
-
-| Command | Description |
-|---|---|
-| `M:IDLE` | Switches to idle mode. The robot stops all autonomous tasks. |
-| `M:FOLLOW_HEADING` | Activates autonomous navigation to follow a specific heading (GOTO mode). |
-| `M:SMART_AVOIDANCE` | Activates general roaming with intelligent obstacle avoidance. |
-| `M:AVOID` | Switches to obstacle avoidance mode. (Alias for `M:SMART_AVOIDANCE`) |
-| `M:SENTRY` | Switches to sentry mode. |
-| `AVOID` | Toggles obstacle avoidance mode. (Legacy command, prefer `M:SMART_AVOIDANCE`)|
-| `SENTRY` | Toggles sentry mode. (Legacy command, prefer `M:SENTRY`) |
-
-
-### Configuration & Calibration
-
-| Command | Description | Example |
-|---|---|---|
-| `CMD:COMPASS_OFFSET:value` | Sets the fine-tuning offset for the compass. `value` is an integer representing the offset. | `CMD:COMPASS_OFFSET:10\n` |
-
-
-### Actions
-
-| Command | Description |
-|---|---|
-| `HL:ON` | Turns the headlight on. |
-| `HL:OFF` | Turns the headlight off. |
+*   `IDLE`: Stops all actions.
+*   `AVOID`: Activates `OBSTACLE_AVOIDANCE` mode.
+*   `SENTRY`: Activates `SENTRY_MODE`.
+*   `CALIBRATE`: Starts the 15-second compass calibration.
+*   `TOGGLE_AVOID`: Toggles `OBSTACLE_AVOIDANCE` mode.
+*   `TOGGLE_SENTRY`: Toggles `SENTRY_MODE`.
 
 ## 4. Telemetry
 
-The robot sends telemetry data to the app as a JSON object, terminated with a newline character (`\n`). The telemetry is sent periodically.
+The robot sends telemetry data as a JSON object, terminated with a newline character (`\n`).
 
-Here is an example of the telemetry data:
-
+**Example:**
 ```json
-{"state":"IDLE","heading":180,"distance":50,"distanceLaser":25,"battery":80,"speedTarget":200}
+{"state":"IDLE","heading":26,"distance":81,"distanceLaser":86,"battery":51,"speedTarget":100}
 ```
 
 ### Telemetry Fields
 
 | Field | Description |
-|---|---|
-| `state` | The current state of the robot. Possible values include: "IDLE", "MOVING_FORWARD", "MOVING_BACKWARD", "TURNING_LEFT", "TURNING_RIGHT", "FOLLOW_HEADING", "MAINTAIN_HEADING", "OBSTACLE_AVOIDANCE", "AVOID_MANEUVER", "SCANNING", "UNKNOWN". |
-| `heading` | The robot's current heading in degrees (0-360), derived from the LSM303 compass. |
-| `distance` | The distance to the nearest obstacle in cm, measured by the ultrasonic sensor. |
-| `distanceLaser` | The distance to the nearest obstacle in cm, measured by the VL53L1X laser sensor. |
-| `battery` | The battery level in percent (0-100). |
-| `speedTarget` | The robot's target speed (0-255). |
+| :--- | :--- |
+| `state` | The current state of the robot (e.g., "IDLE", "OBSTACLE_AVOIDANCE", "FOLLOW_HEADING"). |
+| `heading` | The robot's current compass heading in degrees (0-360). |
+| `distance` | Distance from the ultrasonic sensor in cm. |
+| `distanceLaser` | Distance from the ToF laser sensor in cm. |
+| `battery` | Battery level percentage (0-100). |
+| `speedTarget` | The manually set target speed (`vitesseCible`). **Note:** This does not reflect the speed used in autonomous modes. |

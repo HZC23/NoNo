@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2025-12-23
+
+### Fixed
+- **Linker Errors**: Resolved "multiple definition" errors by refactoring global variable definitions out of `NoNo.ino` and into `globals.cpp` with `extern` declarations in `globals.h`.
+- **Immediate Stuck State**: Fixed a bug where the robot would immediately enter a `STUCK` state upon moving. The impact detection threshold in `compass.h` was too sensitive and was being triggered by the motors' own vibration. The threshold has been increased from `12000` to `18000`.
+- **Inaccurate Battery Percentage**: Corrected the battery voltage calculation in `support.h`. The hardcoded voltage divider ratio was incorrect for the Freenove ESP32-S3 board. The formula now uses the correct ratio based on the board's schematic.
+- **Robot Not Moving in Autonomous Modes**: Fixed a critical bug in `fonctions_motrices.h` where the `MOVING_FORWARD` and `FOLLOW_HEADING` states were using `robot.vitesseCible` (intended for manual control) instead of `robot.speedAvg`. This caused the robot to not move autonomously.
+- **`cmd:move` Serial Command**: Reworked the serial `move` command logic which was preventing movement. Removed an incorrect state change to `GAMEPAD_CONTROL` and added a bypass to the main loop to allow direct motor commands to execute without being immediately overridden by the state machine.
+- **Inappropriate LCD Behavior**: Re-enabled LCD status messages for `EMERGENCY_EVASION` ("Bumper Hit!") and `STUCK` ("I'm stuck!") states. This provides clearer user feedback and prevents the joke-telling function from activating during critical maneuvers.
+- **I2C Warnings**: Removed a redundant call to `Wire.begin()` in `NoNo.ino` that was causing "Bus already started" warnings in the serial output.
+
 ## [Unreleased]
 
 ### Added

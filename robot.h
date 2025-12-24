@@ -1,63 +1,15 @@
-#ifndef STATE_H
-#define STATE_H
+#ifndef ROBOT_H
+#define ROBOT_H
 
 #include <Arduino.h>
 #include "config.h"
-
-enum ObstacleAvoidanceState {
-  AVOID_START,
-  AVOID_QUICK_SCAN_LEFT,
-  AVOID_WAIT_FOR_LEFT_SCAN,
-  AVOID_QUICK_SCAN_RIGHT,
-  AVOID_WAIT_FOR_RIGHT_SCAN,
-  AVOID_CENTER_TURRET,
-  AVOID_WAIT_FOR_CENTER,
-  AVOID_FULL_SCAN_START,
-  AVOID_FULL_SCAN_STEP,
-  AVOID_FULL_SCAN_FINISH,
-  AVOID_TURN_TO_BEST_ANGLE,
-  AVOID_BACKUP,
-  AVOID_TURN_IN_PLACE,    // New state: turn in place to escape tight spots
-  AVOID_FINISH_TURN       // New state: wait for turn to complete
-};
-
-enum GroundCheckState {
-  GC_START,
-  GC_LOOK_DOWN,
-  GC_WAIT,
-  GC_CHECK,
-  GC_LOOK_UP,
-  GC_FINISH
-};
-
-enum HeadAnimationType { ANIM_NONE, ANIM_SHAKE_NO, ANIM_NOD_YES };
-
-enum SentryState {
-  SENTRY_IDLE,
-  SENTRY_SCAN_START,
-  SENTRY_SCAN_STEP,
-  SENTRY_TRACKING,
-  SENTRY_ALARM
-};
-
-enum CommunicationMode {
-  COMM_MODE_SERIAL,
-  COMM_MODE_XBOX
-};
-
-// Enum for the sub-states of the emergency evasion maneuver
-enum EvasionState {
-  EVADE_START,
-  EVADE_BACKUP,
-  EVADE_PIVOT,
-  EVADE_FINISH
-};
+#include <LSM303.h> // Required for the vector type in the Robot struct
 
 // Structure to hold the robot's state
 struct Robot {
     // State Machine
-    RobotState currentState = IDLE;
-    ObstacleAvoidanceState obstacleAvoidanceState = AVOID_START;
+    RobotState currentState;
+    ObstacleAvoidanceState obstacleAvoidanceState;
     EvasionState evasionState = EVADE_START;
     GroundCheckState groundCheckState = GC_START;
     SentryState sentryState = SENTRY_IDLE;
@@ -80,14 +32,14 @@ struct Robot {
 
     // Motion
     int vitesseCible = 0;
-    int speedAvg = VITESSE_MOYENNE; // Default average speed
-    int speedSlow = VITESSE_LENTE;   // Default slow speed
-    int initialSpeedAvg = VITESSE_MOYENNE; // Stores the initial average speed (from config or default)
-    int initialSpeedSlow = VITESSE_LENTE;   // Stores the initial slow speed (from config or default)
-    int speedRotation = VITESSE_ROTATION; // Default rotation speed, loaded from config
-    float turnTolerance = TOLERANCE_VIRAGE; // Default turn tolerance, loaded from config
-    float KpHeading = Kp_HEADING; // Default Kp for heading, loaded from config
-    int speedRotationMax = VITESSE_ROTATION_MAX; // Max rotation speed, loaded from config
+    int speedAvg; // Default average speed
+    int speedSlow;   // Default slow speed
+    int initialSpeedAvg; // Stores the initial average speed (from config or default)
+    int initialSpeedSlow;   // Stores the initial slow speed (from config or default)
+    int speedRotation; // Default rotation speed, loaded from config
+    float turnTolerance; // Default turn tolerance, loaded from config
+    float KpHeading; // Default Kp for heading, loaded from config
+    int speedRotationMax; // Max rotation speed, loaded from config
     bool hasReculed = false;
     bool controlInverted = false; // Flag for control inversion
     bool hasTurned = false;
@@ -96,29 +48,32 @@ struct Robot {
     bool isStuckConfirmed = false;
     // currentSteeringBias: Stores the current steering angle relative to center (e.g., -30 to +30 degrees).
     //                      Used by power steering to provide more power during sharp turns.
-    int currentSteeringBias = 0;
-    float pivotAngleThreshold = SEUIL_BASCULE_DIRECTION;
+    int currentSteeringBias;
+    float pivotAngleThreshold;
 
     // Motion Physics
-    float motorBCalibration = CALIBRATION_MOTEUR_B;
-    int minSpeedToMove = MIN_SPEED_TO_MOVE;
-    float accelRate = ACCEL_RATE;
-    float diffStrength = DIFF_STRENGTH;
-    float fwdDiffCoeff = FWD_DIFF_COEFF;
+    float motorBCalibration;
+    int minSpeedToMove;
+    float accelRate;
+    float diffStrength;
+    float fwdDiffCoeff;
+    float currentPwmA = 0;
+    float currentPwmB = 0;
+
 
 
     // Navigation
-    float capCibleRotation = 0;
-    int Ncap = INITIAL_NCAP;
-    int cap = INITIAL_CAP;
+    float capCibleRotation;
+    int Ncap;
+    int cap;
 
     // Servos
-    int servoNeutralDir = NEUTRE_DIRECTION;
-    int servoNeutralTurret = NEUTRE_TOURELLE;
-    int servoDirMin = SERVO_DIR_MIN;
-    int servoDirMax = SERVO_DIR_MAX;
-    int servoAngleHeadDown = ANGLE_TETE_BASSE;
-    int servoAngleGround = ANGLE_SOL;
+    int servoNeutralDir;
+    int servoNeutralTurret;
+    int servoDirMin;
+    int servoDirMax;
+    int servoAngleHeadDown;
+    int servoAngleGround;
 
     // Battery
     bool batteryIsLow = false;
@@ -137,14 +92,14 @@ struct Robot {
     int distanceLaser = 0;
     bool obstacleDetectedByLaser = false;
     bool laserInitialized = false;
-    unsigned long laserTimingBudget = VL53L1X_TIMING_BUDGET_US;
-    unsigned long laserInterMeasurementPeriod = VL53L1X_INTER_MEASUREMENT_PERIOD_MS;
-    int maxUltrasonicDistance = MAX_ULTRASONIC_DISTANCE;
+    unsigned long laserTimingBudget;
+    unsigned long laserInterMeasurementPeriod;
+    int maxUltrasonicDistance;
 
 
     // Cliff Detection
-    unsigned long lastCliffCheckTime = 0;
-    int seuilVide = SEUIL_VIDE;
+    unsigned long lastCliffCheckTime;
+    int seuilVide;
     
     // Horizon Stabilization
     float currentPitch = 0.0;
@@ -154,24 +109,24 @@ struct Robot {
     int intruderAngle = 0;
 
     // Curious Mode (Idle Animation)
-    int curiousTargetH = SCAN_CENTER_ANGLE;
-    int curiousTargetV = NEUTRE_TOURELLE;
+    int curiousTargetH;
+    int curiousTargetV;
 
     // Scanning
-    int currentScanAngleH = SCAN_H_START_ANGLE;
+    int currentScanAngleH;
     int currentScanAngleV = 90;
-    unsigned long lastScanTime = 0;
+    unsigned long lastScanTime;
     int scanDistances[SCAN_DISTANCE_ARRAY_SIZE]; // To store distances for angles 0-180
     int bestAvoidAngle;
-    float anglePenaltyFactor = ANGLE_PENALTY_FACTOR;
+    float anglePenaltyFactor;
 
     // Turret
-    unsigned long turretMoveTime = TURRET_MOVE_TIME_MS;
-    unsigned long turretScanDelay = SCAN_DELAY_MS;
+    unsigned long turretMoveTime;
+    unsigned long turretScanDelay;
 
     // Obstacle Avoidance
-    unsigned long avoidBackupDuration = AVOID_BACKUP_DURATION_MS;
-    int minDistForValidPath = MIN_DIST_FOR_VALID_PATH;
+    unsigned long avoidBackupDuration;
+    int minDistForValidPath;
 
     // Compass Calibration
     bool compassInitialized = false;
@@ -205,9 +160,13 @@ struct Robot {
     const unsigned long reportInterval = 2000;
 
     // Initialization
-    unsigned long initialAutonomousDelay = INITIAL_AUTONOMOUS_DELAY_MS;
+    unsigned long startTime;
+    unsigned long initialAutonomousDelay;
+    unsigned long lastCompassReadTime;
 };
 
+// --- Global Robot Instance ---
+extern Robot robot;
 
 
-#endif // STATE_H
+#endif // ROBOT_H

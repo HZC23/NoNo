@@ -1,49 +1,31 @@
-# Référence des Commandes pour l'Application
+# Référence des Commandes Série
 
-Ce document détaille toutes les commandes texte qui peuvent être envoyées au robot Nono via le service BLE de l'application.
+Ce document détaille toutes les commandes texte qui peuvent être envoyées au robot Nono via une connexion série (USB).
 
 ## Format Général
 
-La plupart des commandes suivent une structure `PREFIXE:VALEUR`. Certaines commandes plus complexes utilisent un format `PREFIXE:SOUS_PREFIXE=VALEUR`. Toutes les commandes doivent se terminer par un caractère de nouvelle ligne (`\n`). Les commandes ne sont pas sensibles à la casse (ex: `HL:ON` et `hl:on` sont identiques).
+Toutes les commandes suivent une structure `CLÉ:VALEUR` et doivent se terminer par un caractère de nouvelle ligne (`\n`). Les clés de commande ne sont pas sensibles à la casse (ex: `L:ON` et `l:on` sont identiques).
 
 ---
 
-## Préfixe `CMD` - Commandes Générales
+## Référence des Commandes
 
-Ce sont les commandes principales pour le contrôle et la configuration du robot.
-
-| Commande | Paramètres | Description |
-| :--- | :--- | :--- |
-| `CMD:MOVE` | `velocity,turn` | Contrôle le mouvement direct du robot. `velocity` et `turn` sont des valeurs de -255 à 255. |
-| `CMD:GOTO` | `heading` | Fait pivoter le robot pour faire face au cap (en degrés) spécifié. |
-| `CMD:SPEED`| `speed` | Définit la vitesse cible (0-255) pour les modes de déplacement autonomes. |
-| `CMD:COMPASS_OFFSET` | `offset` | Applique une correction manuelle (en degrés) à la boussole pour un réglage fin. |
-| `CMD:SET_MODE` | `XBOX` ou `APP` | Change le mode de contrôle principal et redémarre le robot. Utile pour basculer vers le mode manette depuis l'application. |
-
----
-
-## Préfixe `MODE` - Changement de Comportement
-
-Change l'état ou le mode de fonctionnement actuel du robot.
-
-| Commande | Description |
-| :--- | :--- |
-| `MODE:IDLE` | Arrête toute action en cours et met le robot en attente. |
-| `MODE:AVOID` | Active le mode autonome d'esquive d'obstacles. |
-| `MODE:SENTRY` | Active le mode sentinelle, où le robot surveille les mouvements. |
-| `MODE:SCAN3D`| Lance un scan 3D de l'environnement devant lui. |
-| `MODE:CALIBRATE`| Démarre la procédure de calibrage de la boussole. |
-| `MODE:TOGGLE_AVOID` | Bascule (active/désactive) le mode `AVOID`. |
-| `MODE:TOGGLE_SENTRY`| Bascule (active/désactive) le mode `SENTRY`. |
+| Clé | Paramètres | Description | Exemple |
+| :--- | :--- | :--- | :--- |
+| `M` | `vitesse,virage` | **Move**: Contrôle directement les moteurs. `vitesse` est la vitesse avant/arrière (-255 à 255), `virage` est la composante de rotation (-255 à 255). Non-persistant. | `M:150,50` |
+| `G` | `cap` | **Goto**: Fait pivoter le robot vers le `cap` absolu spécifié (0-359 degrés) et active le mode `FOLLOW_HEADING`. | `G:90` |
+| `S` | `vitesse` | **Speed**: Définit la vitesse cible manuelle (`vitesseCible`) de 0 à 255. | `S:200` |
+| `CO`| `offset` | **Compass Offset**: Applique une correction permanente (en degrés) au cap de la boussole. | `CO:-5.5` |
+| `SM`| `XBOX` ou `SERIAL` | **Set Mode**: Change le mode de contrôle principal et redémarre le robot. | `SM:XBOX` |
+| `E` | `mode` | **État**: Change l'état comportemental du robot. Voir les modes ci-dessous. | `E:AVOID` |
+| `L` | `ON`, `OFF`, `TOGGLE` | **Light**: Contrôle les phares. | `L:ON` |
 
 ---
+## Modes disponibles pour la commande `E:`
 
-## Préfixe `HL` - Contrôle des Phares
-
-| Commande | Description |
-| :--- | :--- |
-| `HL:ON` | Allume les phares. |
-| `HL:OFF` | Éteint les phares. |
-| `HL:TOGGLE`| Bascule l'état actuel des phares. |
-
----
+-   `IDLE`: Arrête toutes les actions.
+-   `AVOID`: Active le mode autonome `OBSTACLE_AVOIDANCE`.
+-   `SENTRY`: Active le mode `SENTRY_MODE`.
+-   `CALIBRATE`: Démarre la procédure de calibrage de la boussole (15 sec).
+-   `TOGGLE_AVOID`: Bascule (active/désactive) le mode `OBSTACLE_AVOIDANCE`.
+-   `TOGGLE_SENTRY`: Bascule (active/désactive) le mode `SENTRY_MODE`.

@@ -21,16 +21,16 @@ Le code est organisé en plusieurs fichiers d'en-tête (`.h`) pour séparer les 
 | `config.h` | Fichier de configuration central. Contient les constantes, les broches (pins), les flags d'activation du matériel et les définitions de types (comme l'énumération `RobotState`). |
 | `state.h` | Définit la structure `Robot` qui contient toutes les variables d'état globales. |
 | `fonctions_motrices.h` | Implémente la logique de contrôle des moteurs et la machine à états principale (`updateMotorControl`). |
-| `terminal.h` | Gère la réception des commandes série. **(Note : Contient un analyseur de commandes JSON actuellement inactif. Le contrôle principal est géré par `xbox_controller_bluepad.h`.)** |
+| `terminal.h` | Gère la réception et l'interprétation des commandes série. |
 | `telemetry.h` | Gère la construction et l'envoi des messages de télémétrie JSON vers le port série. |
 | `sensor_task.h` | Contient les tâches non bloquantes pour la lecture du capteur à ultrasons. |
 | `compass.h` | Encapsule toute la logique liée au magnétomètre LSM303 : lecture, filtrage et calibration. |
 | `display.h` | Gère l'affichage des informations sur l'écran LCD I2C. |
-| `xbox_controller_bluepad.h` | **(Nouveau)** Gère l'initialisation et la lecture des commandes d'une manette Xbox via Bluepad32. |
+| `xbox_controller_bluepad.h` | Gère l'initialisation et la lecture des commandes d'une manette Xbox via Bluepad32. |
 | `tourelle.h` | Classe de contrôle pour les servomoteurs de la tourelle (pan/tilt). |
 | `support.h` | Fonctions utilitaires diverses (ex: lecture de la batterie). |
 | `led_fx.h` | Gère les effets visuels de la bande de LEDs NeoPixel en fonction de l'état du robot. |
-| `fonctions.h`| Fonctions diverses, partiellement dépréciées. |
+| `globals.h` / `globals.cpp` | Centralise la définition et la déclaration des objets et variables globaux. |
 
 ---
 
@@ -41,14 +41,15 @@ La machine à états, définie dans `config.h` et implémentée dans `fonctions_
 | État | Description |
 | :--- | :--- |
 | `IDLE` | Le robot est à l'arrêt et attend des instructions. |
-| `MOVING_FORWARD` / `MOVING_BACKWARD` | Déplacement en ligne droite (avant/arrière), inclut les états manuels. |
-| `TURNING_LEFT` / `TURNING_RIGHT` | Pivot sur place vers la gauche ou la droite, inclut les états manuels. |
+| `MOVING_FORWARD` / `MOVING_BACKWARD` | Déplacement en ligne droite. |
+| `TURNING_LEFT` / `TURNING_RIGHT` | Pivot sur place vers la gauche ou la droite. |
 | `FOLLOW_HEADING` | Le robot utilise le compas pour s'orienter et avancer vers un cap cible. |
-| `MAINTAIN_HEADING` | Le robot est à l'arrêt mais ajuste activement son orientation pour maintenir un cap. |
-| `OBSTACLE_AVOIDANCE` | **État complexe non-bloquant.** Un obstacle a été détecté. Le robot exécute une séquence de scan (rapide et complet) avec sa tourelle pour trouver le chemin le plus dégagé, puis pivote dans cette direction avant de reprendre sa route. S'il est coincé, il recule. |
-| `SCANNING` | Le robot effectue un scan complet de l'environnement avec sa tourelle et envoie les données. |
+| `EMERGENCY_EVASION` | Une collision (bumper) a été détectée. Le robot exécute une manœuvre de recul et de pivot. |
+| `STUCK` | Le robot a détecté un blocage physique (IMU) et tente une manœuvre de dégagement. |
+| `OBSTACLE_AVOIDANCE` | **État complexe non-bloquant.** Un obstacle a été détecté. Le robot exécute une séquence de scan pour trouver le chemin le plus dégagé, puis pivote dans cette direction. |
 | `CALIBRATING_COMPASS` | Le robot est en mode de calibration du magnétomètre. |
-| `SENTRY_MODE` / `SENTRY_ALARM` | Mode sentinelle. Le robot surveille un mouvement (capteur PIR) et déclenche une alarme visuelle. |
+| `SENTRY_MODE` | Mode sentinelle. Le robot surveille un mouvement et déclenche une alerte visuelle. |
+| `CLIFF_DETECTED` | Le robot a détecté un vide et exécute une manœuvre d'arrêt et de recul. |
 
 
 ---
@@ -57,76 +58,33 @@ La machine à états, définie dans `config.h` et implémentée dans `fonctions_
 
 La fonction `loop()` dans `NoNo.ino` agit comme un planificateur de tâches (scheduler) coopératif. Elle appelle séquentiellement les fonctions suivantes à chaque itération :
 
-1.  **`Terminal()` :** Vérifie si de nouvelles données sont arrivées sur le port série, les lit et interprète les commandes.
-2.  **`sensor_update_task()` :** Met à jour la lecture du capteur à ultrasons.
-3.  **Lecture des capteurs intégrés :** Lit le capteur de distance laser (VL53L1X) et le compas.
-4.  **`updateMotorControl()` :** Exécute la logique de l'état actuel de la machine à états (par exemple, ajuste la vitesse des moteurs si dans l'état `FOLLOW_HEADING`).
-5.  **`sendTelemetry()` :** Envoie le paquet de télémétrie JSON si l'intervalle d'envoi est écoulé.
-
-L'affichage LCD est mis à jour directement par les fonctions concernées via `setLcdText()` lorsque l'information change, plutôt qu'à chaque boucle.
+1.  **`checkSerial()` (via `terminal.h`) :** Vérifie si de nouvelles données sont arrivées sur le port série, les lit et interprète les commandes.
+2.  **`updateBatteryStatus()` :** Lit la tension de la batterie et met à jour l'état de la batterie.
+3.  **`sensor_update_task()` :** Met à jour les lectures des capteurs (ultrasons, laser, etc.).
+4.  **`updateMotorControl()` :** Exécute la logique de l'état actuel de la machine à états (par exemple, ajuste la vitesse des moteurs si dans l'état `FOLLOW_HEADING`). Cette étape est temporairement sautée si une commande manuelle `M:v,t` vient d'être reçue.
+5.  **`updateLcdDisplay()` & `displayJokesIfIdle()`**: Met à jour l'écran LCD avec l'état actuel ou des blagues si le robot est inactif.
+6.  **`sendTelemetry()` :** Envoie le paquet de télémétrie JSON si l'intervalle d'envoi est écoulé.
 
 ---
 
 ## Améliorations Récentes
 
-### 1. Manœuvre d'Évitement d'Obstacle Non-Bloquante
+### 1. Protocole de Commande
 
-L'ancienne logique d'évitement d'obstacles utilisait des `delay()` pour les mouvements de la tourelle, ce qui rendait le robot non réactif pendant plusieurs secondes. Cette logique a été entièrement réécrite.
+L'ancien protocole de commande à plusieurs niveaux (ex: `CMD:MOVE=...`) a été **refactorisé** en un format `CLÉ:VALEUR` plus simple et plus court (ex: `M:100,50`). Ce changement a été implémenté dans `terminal.cpp` et est documenté dans `app_guide.md`.
 
-- **Machine à états imbriquée :** L'état `OBSTACLE_AVOIDANCE` contient désormais sa propre machine à états (gérée par `ObstacleAvoidanceState`) pour gérer les différentes étapes de la manœuvre (scan rapide, scan complet, recul, rotation).
-- **Transitions basées sur le temps :** Les `delay()` ont été remplacés par des comparaisons avec `millis()` pour les mouvements de la tourelle, ce qui permet à la boucle principale de continuer à s'exécuter sans interruption.
-- **Logique de décision améliorée :** Le robot effectue d'abord un scan rapide à gauche et à droite pour les obstacles latéraux. S'il n'y a rien, il procède à un scan complet de 180 degrés pour trouver le chemin le plus long et s'y engage. S'il est complètement bloqué, il recule.
+### 2. Correction de Bugs Critiques
 
-### 2. Qualité du Code et Refactoring
+Un effort important a été fait pour corriger plusieurs bugs qui empêchaient le robot de fonctionner correctement :
+- **Erreurs de Linker :** Correction des erreurs de "multiple definition" en centralisant les variables globales.
+- **Stabilité de Mouvement :** Correction de bugs qui causaient des arrêts intempestifs (détection d'impact trop sensible) et l'incapacité de bouger dans les modes autonomes (mauvaise variable de vitesse utilisée).
+- **Précision des Capteurs :** Correction de la formule de lecture de la tension de la batterie.
 
-Un effort important a été fait pour améliorer la qualité, la lisibilité et la maintenabilité du code.
+### 3. Manœuvre d'Évitement d'Obstacle Non-Bloquante
 
-- **Centralisation des Constantes :** Des dizaines de "nombres magiques" (valeurs hardcodées) ont été extraits des fichiers de logique (`fonctions_motrices.h`, `compass.h`, etc.) et remplacés par des constantes nommées dans `config.h`. Cela inclut les timeouts, les paramètres de capteurs, les dimensions du LCD, les seuils, etc.
-- **Suppression du Code Dupliqué :** La fonction `calculateHeading()` dans `compass.h` a été surchargée pour accepter différentes entrées, éliminant ainsi le code de calcul de cap redondant.
-- **Amélioration de la Lisibilité :** Des logiques complexes comme la détermination des points cardinaux dans `compass.h` ont été simplifiées.
-- **Suppression du Code Obsolète :** L'état `AVOID_MANEUVER` (devenu redondant) et une fonction wrapper `setLcdText` superflue ont été supprimés.
-- **Consistance :** L'ensemble du code a été revu pour utiliser les nouvelles constantes et les fonctions refactorisées, garantissant un comportement plus cohérent et prévisible.
+L'ancienne logique d'évitement d'obstacles utilisait des `delay()` pour les mouvements de la tourelle, ce qui rendait le robot non réactif. Cette logique a été entièrement réécrite en une machine à états imbriquée non-bloquante, basée sur `millis()`, pour une réactivité maximale.
 
----
+### 4. Qualité du Code et Refactoring
 
-## Gestion des LEDs (`led_fx.h`)
-
-Le robot est équipé de **4 LEDs RGB adressables (NeoPixel)**, mais leur disposition est particulière :
-- **1 LED interne :** Située sur la carte ESP32-S3 (index `0`), elle n'est pas visible de l'extérieur et reste éteinte en fonctionnement normal.
-- **3 LEDs externes :** Visibles sur le châssis du robot (indices `1`, `2`, `3`).
-
-La logique dans `led_fx.h` est conçue pour n'utiliser que les 3 LEDs externes pour le retour visuel. La LED la plus à gauche correspond à l'index `3`, celle du milieu à l'index `2`, et celle de droite à l'index `1`.
-
-Le système est basé sur des priorités pour afficher l'état le plus important.
-
-### Ordre de Priorité des Effets LED (sur les 3 LEDs externes)
-
-1.  **Batterie Critique :**
-    - **Effet :** Les 3 LEDs clignotent rapidement en rouge.
-    - **Condition :** `robot.batteryIsCritical` est vrai.
-
-2.  **Détection de Précipice :**
-    - **Effet :** Les 3 LEDs clignotent en orange.
-    - **Condition :** `robot.currentState` est `CLIFF_DETECTED`.
-
-3.  **Évitement d'Obstacle :**
-    - **Effet :** Un "scanner Cylon" : une seule LED rouge se déplace d'avant en arrière sur les 3 LEDs externes.
-    - **Condition :** `robot.currentState` est `OBSTACLE_AVOIDANCE`.
-
-4.  **Mode Sentinelle :**
-    - **Poursuite :** Les 3 LEDs clignotent rapidement entre rouge et jaune.
-    - **Scan :** Scanner "Cylon" avec une LED bleue sur les 3 LEDs externes.
-    - **Condition :** `robot.currentState` est `SENTRY_MODE`.
-
-5.  **États de Mouvement et d'Attente :**
-    - **`IDLE` (Inactif) :** Effet de "respiration" bleu sur les 3 LEDs.
-    - **`MOVING_FORWARD` :** Les 3 LEDs sont vertes fixes.
-    - **`MOVING_BACKWARD` :** Les 3 LEDs sont oranges fixes.
-    - **`TURNING_LEFT` :** La LED la plus à gauche (index 3) s'allume en jaune, les autres sont éteintes.
-    - **`TURNING_RIGHT` :** La LED la plus à droite (index 1) s'allume en jaune, les autres sont éteintes.
-    - **`CALIBRATING_COMPASS` :** Un effet arc-en-ciel défile sur les 3 LEDs.
-
-6.  **Indicateurs par Défaut :**
-    - **Batterie Faible (si inactif) :** Les 3 LEDs ont une pulsation lente jaune.
-    - **État non géré :** Toutes les LEDs externes sont éteintes.
-
+- **Centralisation des Constantes :** Des "nombres magiques" ont été extraits et remplacés par des constantes nommées dans `config.h`.
+- **Suppression du Code Obsolète :** D'anciennes fonctions et logiques redondantes ont été nettoyées.

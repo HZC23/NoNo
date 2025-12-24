@@ -1,57 +1,52 @@
 # NoNo Robot Project
 
-Ce dépôt contient le code source pour le firmware Arduino du robot "NoNo", ainsi que la documentation associée.
+This repository contains the source code for the "NoNo" robot's Arduino firmware, built using the PlatformIO IDE.
 
-NoNo est un robot mobile différentiel, contrôlé par une carte Arduino Mega, conçu pour la navigation autonome et le contrôle à distance.
+NoNo is a differential-drive mobile robot based on the ESP32-S3, designed for autonomous navigation and remote control.
 
-## Navigation
+## Documentation
 
-- **[Software](./software.md):** Une description détaillée de l'architecture logicielle, de la machine à états et des principales bibliothèques.
-- **[Hardware](./hardware.md):** La liste des composants électroniques et leur câblage.
-- **[Communication](./communication.md):** Le protocole de communication BLE et série.
-- **[Commands](./commands.md):** La liste exhaustive des commandes série pour contrôler le robot.
-- **[Calibration](./calibration.md):** Des instructions détaillées pour le calibrage du magnétomètre.
+- **[Software](./software.md):** A detailed description of the software architecture, state machine, and main libraries.
+- **[Hardware](./hardware.md):** A list of the electronic components and their wiring.
+- **[Communication](./communication.md):** The serial communication protocol.
+- **[Commands](./commands.md):** An exhaustive list of serial commands to control the robot.
+- **[Calibration](./calibration.md):** Detailed instructions for calibrating the magnetometer.
+- **[App Guide](./app_guide.md):** A guide for connecting to and controlling the robot via a serial terminal or application.
 
-## Fonctionnalités Principales
+## Main Features
 
-- **Architecture non bloquante :** Le firmware est basé sur une machine à états pour un comportement réactif.
-- **Modes de navigation multiples :** Contrôle manuel, suivi de cap (GOTO), et virages relatifs.
-- **Capteurs :**
-    - Magnétomètre/Accéléromètre (LSM303) pour l'orientation.
-    - Capteur de distance à ultrasons pour l'évitement d'obstacles.
-    - Capteur de distance laser (VL53L1X) pour des mesures précises.
-- **Actionneurs :**
-    - Deux moteurs DC avec pilote MX1508 pour la propulsion.
-    - Tourelle avec deux servomoteurs (pan/tilt).
-- **Interface utilisateur :**
-    - Écran LCD pour afficher l'état et les données des capteurs.
-    - Communication série via USB ou Bluetooth pour le contrôle et la télémétrie.
+- **Non-blocking architecture:** The firmware is based on a state machine for reactive behavior.
+- **Multiple navigation modes:** Manual control, heading tracking (GOTO), and autonomous obstacle avoidance.
+- **Sensors:**
+    - Magnetometer/Accelerometer (LSM303) for orientation.
+    - Ultrasonic distance sensor for obstacle avoidance.
+    - Time-of-Flight laser distance sensor (VL53L1X) for precise measurements.
+- **Actuators:**
+    - Two DC motors with an MX1508 driver for propulsion.
+    - A pan/tilt turret with two servos.
+- **User Interface:**
+    - I2C LCD screen to display status and sensor data.
+    - Serial communication via USB for control and telemetry.
 
-## Développement
+## Development
 
-### Prérequis
+### Prerequisites
 
-- [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/)
-- Les bibliothèques Arduino nécessaires (listées dans `NoNo.ino`)
+- [Visual Studio Code](https://code.visualstudio.com/)
+- [PlatformIO IDE extension](https://platformio.org/install/ide?install=vscode) for VSCode.
 
-### Compilation
+### Compilation and Uploading
 
-Pour compiler le firmware, exécutez la commande suivante à la racine du projet :
+This project is configured to be built with PlatformIO.
 
-```bash
-arduino-cli compile --fqbn arduino:avr:mega
-```
-
-### Téléversement
-
-1.  Identifiez le port de votre carte Arduino :
-
+1.  Open the project folder in Visual Studio Code.
+2.  The PlatformIO extension should recognize the `platformio.ini` file.
+3.  To compile the firmware, use the "Build" task in the PlatformIO project task list or run the following command in the PlatformIO CLI terminal:
     ```bash
-    arduino-cli board list
+    platformio run
     ```
-
-2.  Téléversez le code sur la carte (en remplaçant `<PORT>` par le port identifié) :
-
+4.  To upload the firmware to the ESP32-S3 board, use the "Upload" task or run:
     ```bash
-    arduino-cli upload -p <PORT> --fqbn arduino:avr:mega NoNo.ino
+    platformio run --target upload
     ```
+PlatformIO will automatically handle the correct board type (`freenove_esp32_s3_lite`) and download all necessary library dependencies.
