@@ -28,6 +28,9 @@ void displayRandomJoke(Robot& robot);
 void displayJokesIfIdle(Robot& robot);
 void updateLcdDisplay(Robot& robot);
 
+// Haptics
+void trigger_rumble(uint8_t duration, uint8_t weak_magnitude, uint8_t strong_magnitude);
+
 // --- Xbox Controller Class ---
 class XboxControllerBluepad {
 public:
@@ -35,15 +38,11 @@ public:
     void begin();
     void processControllers();
     bool isConnected();
-    void setHardware(MX1508& motorA_ref, MX1508& motorB_ref, Tourelle& tourelle_ref);
+    static ControllerPtr getController(int index); // New getter
 
 private:
     Robot& robot;
     static Robot* robot_ptr;
-    static MX1508* motorA_ptr;
-    static MX1508* motorB_ptr;
-    static Tourelle* tourelle_ptr;
-
     static ControllerPtr myControllers[BP32_MAX_CONTROLLERS];
     static void onConnectedController(ControllerPtr ctl);
     static void onDisconnectedController(ControllerPtr ctl);

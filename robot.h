@@ -14,6 +14,7 @@ struct Robot {
     GroundCheckState groundCheckState = GC_START;
     SentryState sentryState = SENTRY_IDLE;
     RobotState stateBeforeGroundCheck = IDLE;
+    RobotState stateBeforeEvasion = IDLE;
 
     HeadAnimationType currentHeadAnimation = ANIM_NONE;
     unsigned long headAnimStartTime = 0;
@@ -32,6 +33,8 @@ struct Robot {
 
     // Motion
     int vitesseCible = 0;
+    int manualTargetVelocity = 0; // New: Stores target velocity for manual commands
+    int manualTargetTurn = 0;     // New: Stores target turn for manual commands
     int speedAvg; // Default average speed
     int speedSlow;   // Default slow speed
     int initialSpeedAvg; // Stores the initial average speed (from config or default)
@@ -41,7 +44,7 @@ struct Robot {
     float KpHeading; // Default Kp for heading, loaded from config
     int speedRotationMax; // Max rotation speed, loaded from config
     bool hasReculed = false;
-    bool controlInverted = false; // Flag for control inversion
+    bool controlInverted = true; // Flag for control inversion
     bool hasTurned = false;
     // isStuckConfirmed: Flag set to true when the robot detects it is physically stuck (e.g., against a wall)
     //                   Used for traction control and escape maneuvers.
@@ -59,6 +62,8 @@ struct Robot {
     float fwdDiffCoeff;
     float currentPwmA = 0;
     float currentPwmB = 0;
+    int evasionPwmA = 0;
+    int evasionPwmB = 0;
 
 
 
@@ -119,6 +124,8 @@ struct Robot {
     int scanDistances[SCAN_DISTANCE_ARRAY_SIZE]; // To store distances for angles 0-180
     int bestAvoidAngle;
     float anglePenaltyFactor;
+    int quickScanLeftDist;  // For smart avoidance
+    int quickScanRightDist; // For smart avoidance
 
     // Turret
     unsigned long turretMoveTime;

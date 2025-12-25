@@ -25,15 +25,15 @@
 // --- MOTEURS DC (Pont en H) ---
 #define AIN1          17
 #define AIN2          18
-#define BIN1          8
-#define BIN2          16
+#define BIN1          16
+#define BIN2          8
 
 // --- CAPTEURS ---
 #define TRIGGER       6 // Moved from 38
 #define ECHO          7 // Moved from 39
-#define VBAT          5    // Entrée Analogique
+#define VBAT          5 // Entrée Analogique
 #define PIR           14 // Moved from 40
-#define INTERUPTPIN   21   // Bumper switch for collision detection
+#define INTERUPTPIN   21 // Bumper switch for collision detection
 
 // --- SORTIES ---
 #define NEOPIXEL_PIN  48   // Souvent la LED intégrée sur le S3
@@ -59,7 +59,7 @@
 #define FWD_DIFF_COEFF 1.4f         // Coefficient for 4WD differential
 
 // --- Default Servo Parameters (Overridden by config.txt) ---
-#define NEUTRE_DIRECTION 85         // Servo angle for straight steering (center)
+#define NEUTRE_DIRECTION 93         // Servo angle for straight steering (center)
 #define NEUTRE_TOURELLE 90          // Servo angle for centered turret
 #define SERVO_DIR_MIN 8             // Minimum mechanical limit for steering servo
 #define SERVO_DIR_MAX 172           // Maximum mechanical limit for steering servo
@@ -109,6 +109,9 @@
 // --- Timing & Delays ---
 #define CUSTOM_MESSAGE_DURATION_MS 5000 // Duration for custom LCD messages
 #define STALL_DETECTION_TIMEOUT_MS 7000 // Timeout to detect if robot is stuck
+#define IMPACT_DETECTION_THRESHOLD 25000 // Threshold for accelerometer jerk to detect impact. Higher value means less sensitive.
+#define BUMPER_DEBOUNCE_DELAY_MS 50 // Debounce delay for the bumper interrupt
+#define IMPACT_THRESHOLD_COUNT 3 // Number of consecutive high-jerk readings to trigger an impact
 
 // --- Sentry Mode Parameters ---
 #define SENTRY_SCAN_SPEED_MS 50
@@ -147,6 +150,7 @@
 
 #define LOW_BATTERY_THRESHOLD 20 // %
 #define RECHARGED_THRESHOLD 30   // % Threshold to exit low battery state (hysteresis)
+#define CRITICAL_BATTERY_HYSTERESIS_MS 2000 // ms duration before triggering critical battery state
 
 
 #define SERIAL_BAUD_RATE 115200
@@ -189,6 +193,19 @@
 #define NVS_NAMESPACE "nono-cfg"
 #define NVS_COMM_MODE_KEY "comm_mode"
 
+// Keys for compass calibration data
+#define NVS_COMPASS_MAGIC_KEY "cps_magic"
+#define NVS_COMPASS_OFFSET_KEY "cps_offset"
+#define NVS_COMPASS_CALIBRATED_KEY "cps_calib"
+#define NVS_MAG_MIN_X_KEY "mag_min_x"
+#define NVS_MAG_MIN_Y_KEY "mag_min_y"
+#define NVS_MAG_MIN_Z_KEY "mag_min_z"
+#define NVS_MAG_MAX_X_KEY "mag_max_x"
+#define NVS_MAG_MAX_Y_KEY "mag_max_y"
+#define NVS_MAG_MAX_Z_KEY "mag_max_z"
+#define NVS_MAGIC_VALUE 12345
+
+
 // === USB Mass Storage ===
 #define USB_MSC_ENABLED false // Set to true to enable USB Mass Storage functionality
 
@@ -220,6 +237,7 @@
 // - MISC_BUTTON_BACK  (the "View" button on an Xbox controller)
 // - MISC_BUTTON_HOME  (the glowing "Xbox" button)
 
+#define XBOX_BTN_TOGGLE_MANUAL        BUTTON_Y
 #define XBOX_BTN_TOGGLE_HEADLIGHT     BUTTON_A
 #define XBOX_BTN_TOGGLE_AVOIDANCE     BUTTON_B
 #define XBOX_BTN_TOGGLE_SENTRY        BUTTON_X
@@ -271,6 +289,7 @@ enum RobotState {
   CLIFF_DETECTED,
   ANIMATING_HEAD,
   GAMEPAD_CONTROL,
+  MANUAL_COMMAND_MODE, // New state for unified manual command handling
   EMERGENCY_EVASION, // State for bumper-triggered escape maneuver
   STUCK                // State for when stall is detected
 } ;
@@ -281,20 +300,18 @@ enum NavigationMode {
 };
 
 enum ObstacleAvoidanceState {
-  AVOID_START,
-  AVOID_QUICK_SCAN_LEFT,
-  AVOID_WAIT_FOR_LEFT_SCAN,
-  AVOID_QUICK_SCAN_RIGHT,
-  AVOID_WAIT_FOR_RIGHT_SCAN,
-  AVOID_CENTER_TURRET,
-  AVOID_WAIT_FOR_CENTER,
-  AVOID_FULL_SCAN_START,
-  AVOID_FULL_SCAN_STEP,
-  AVOID_FULL_SCAN_FINISH,
-  AVOID_TURN_TO_BEST_ANGLE,
-  AVOID_BACKUP,
-  AVOID_TURN_IN_PLACE,    // New state: turn in place to escape tight spots
-  AVOID_FINISH_TURN       // New state: wait for turn to complete
+  AVOID_IDLE,               // Not currently avoiding
+  AVOID_INIT,               // Starting state, stop and prepare to scan
+  AVOID_QUICK_SCAN_LEFT,    // Point turret left
+  AVOID_QUICK_SCAN_RIGHT,   // Point turret right
+  AVOID_EVALUATE_QUICK_SCANS, // Decide if a quick escape is possible
+  AVOID_PERFORM_FULL_SCAN,  // No quick escape, do a full 180-degree scan
+  AVOID_EVALUATE_FULL_SCAN, // Find the best/widest path from the full scan
+  AVOID_TURN_TO_PATH,       // Turning towards the chosen escape path
+  AVOID_MOVE_FORWARD,       // Moving forward through the chosen path
+  AVOID_RETREAT_TURN,       // Trapped, turn around 180 degrees
+  AVOID_RETREAT_MOVE,       // Trapped, move forward after turning around
+  AVOID_BACKUP_STUCK        // Backup maneuver if physically stuck
 };
 
 enum GroundCheckState {

@@ -37,7 +37,14 @@ extern SemaphoreHandle_t robotMutex;
 
 // --- BUMPER INTERRUPT ---
 extern volatile bool bumperPressed;
+extern volatile unsigned long lastBumperPressTime;
 void IRAM_ATTR onBumperPress();
+
+// --- ULTRASONIC INTERRUPT ---
+extern volatile unsigned long echo_start_time;
+extern volatile unsigned long echo_end_time;
+extern volatile bool echo_received;
+void IRAM_ATTR onEcho();
 
 
 // --- HARDWARE OBJECTS (EXTERN) ---
@@ -64,7 +71,7 @@ float getCalibratedHeading(Robot& robot);
 void calibrateCompass(Robot& robot);
 void saveCompassCalibration(const Robot& robot);
 void loadCompassCalibration(Robot& robot);
-bool isEEPROMDataValid();
+bool isCompassCalibrationValid();
 float calculateHeading(float y, float x);
 float calculateHeading(const LSM303& compass);
 float getPitch(Robot& robot);
@@ -98,6 +105,8 @@ int readBatteryPercentage();
 void updateTurret(Robot& robot, bool isMovingForward);
 void syncTurretWithSteering(int steeringAngle);
 int findClearestPath(Robot& robot);
+int findWidestPath(Robot& robot); // New advanced pathfinding
+void scanDistances(Robot& robot); // Helper for pathfinding
 int setAckermannAngle(Robot& robot, int angleError, int speed);
 
 

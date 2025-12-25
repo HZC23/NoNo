@@ -4,6 +4,7 @@
 #include "hardware.h"
 #include "comms.h"
 #include "fonctions_motrices.h"
+#include "logger.h" // Include the new logger
 
 #if USB_MSC_ENABLED
 #include "USB.h"
@@ -15,7 +16,8 @@ bool usbMscActive = false;
 // --- SETUP ---
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
-    if (DEBUG_MODE) Serial.println("--- NONO BOOTING ---");
+    logger_init(DEBUG_MODE ? LOG_LEVEL_DEBUG : LOG_LEVEL_INFO); // Initialize logger based on DEBUG_MODE
+    LOG_INFO("--- NONO BOOTING ---");
     robot.startTime = millis();
 
     pinMode(VBAT, INPUT);
@@ -23,14 +25,14 @@ void setup() {
     pixels.show();
 
     while (readBatteryPercentage() < CRITICAL_BATTERY_LEVEL) {
-      Serial.println(F("CRITICAL: Batterie trop faible pour initialiser. Chargez SVP!"));
+      LOG_ERROR("Batterie trop faible pour initialiser. Chargez SVP!");
       pixels.setPixelColor(0, (millis() % 1000 < 500) ? pixels.Color(255, 0, 0) : 0);
       pixels.show();
       delay(500);
     }
     pixels.setPixelColor(0, 0);
     pixels.show();
-    Serial.println(F("INFO: Batterie OK pour l'initialisation."));
+    LOG_INFO("Batterie OK pour l'initialisation.");
 
     preferences.begin(NVS_NAMESPACE, false);
     robot.activeCommMode = (CommunicationMode)preferences.getInt(NVS_COMM_MODE_KEY, COMM_MODE_SERIAL);
@@ -38,7 +40,6 @@ void setup() {
 
     robotMutex = xSemaphoreCreateMutex();
     Wire.begin(SDA_PIN, SCL_PIN);
-    Wire.setClock(400000);
     delay(500);
 
     compass = new LSM303();
@@ -59,10 +60,10 @@ void setup() {
     lcd->init();
     
     if (robot.activeCommMode == COMM_MODE_XBOX) {
-        if (DEBUG_MODE) Serial.println("COMM MODE: Xbox Controller");
+        LOG_INFO("COMM MODE: Xbox Controller");
         xboxController.begin();
     } else {
-        if (DEBUG_MODE) Serial.println("COMM MODE: Serial Only");
+        LOG_INFO("COMM MODE: Serial Only");
     }
 
     setLcdText(robot, LCD_STARTUP_MESSAGE_1);
@@ -78,27 +79,24 @@ void setup() {
     compass_init(robot);
 
     if (!vl53->init()) {
-      Serial.println(F("CRITICAL: Failed to detect and initialize VL53L1X sensor!"));
+      LOG_ERROR("Failed to detect and initialize VL53L1X sensor!");
       setLcdText(robot, "Laser Error!");
       while (1);
     } else {
-      if(DEBUG_MODE) Serial.println("VL53L1X sensor initialized.");
+      LOG_INFO("VL53L1X sensor initialized.");
       robot.laserInitialized = true;
       vl53->setDistanceMode(VL53L1X::Long);
       vl53->setMeasurementTimingBudget(robot.laserTimingBudget);
       vl53->startContinuous(robot.laserInterMeasurementPeriod);
     }
+    Wire.setClock(400000);
 
     Servodirection.attach(PINDIRECTION);
     Servodirection.write(robot.servoNeutralDir);
     tourelle.attach();
     tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
 
-    if (robot.activeCommMode == COMM_MODE_XBOX) {
-      xboxController.setHardware(motorA, motorB, tourelle);
-    }
-
-    if (DEBUG_MODE) Serial.println("--- SETUP COMPLETE ---");
+    LOG_INFO("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
     delay(1000);
     setLcdText(robot, LCD_STARTUP_MESSAGE_3);
@@ -110,6 +108,13 @@ void setup() {
 // --- MAIN LOOP ---
 void loop() {
   robot.loopStartTime = millis();
+
+  // Debug prints for diagnostics
+  static unsigned long lastDebugPrintTime = 0;
+  if (millis() - lastDebugPrintTime > 1000) { // Print every second
+    LOG_DEBUG("bumperPressed=%d, activeCommMode=%d, currentState=%d", bumperPressed, robot.activeCommMode, robot.currentState);
+    lastDebugPrintTime = millis();
+  }
 
 #if USB_MSC_ENABLED
   if (usbMscActive) {
@@ -123,6 +128,8 @@ void loop() {
     if (bumperPressed) {
       bumperPressed = false;
       if (robot.currentState != EMERGENCY_EVASION) {
+        trigger_rumble(100, 0, 255); // Strong rumble for bumper press
+        robot.stateBeforeEvasion = robot.currentState;
         changeState(robot, EMERGENCY_EVASION);
       }
     }
@@ -139,7 +146,7 @@ void loop() {
 
     if (robot.batteryIsCritical) {
       Arret();
-      Serial.println("CRITICAL: Batterie Vide. Robot en pause jusqu'a recharge.");
+      LOG_ERROR("Batterie Vide. Robot en pause jusqu'a recharge.");
       bool criticalMessageDisplayed = false;
       while (robot.batteryIsCritical) {
         if (!criticalMessageDisplayed) {
@@ -151,9 +158,6 @@ void loop() {
         updateBatteryStatus(robot);
         delay(250); 
       }
-      Serial.println("INFO: Batterie OK. Reprise des operations.");
-      setLcdText(robot, "Batterie OK !");
-      delay(1000);
     }
 
     sensor_update_task(robot);
@@ -169,17 +173,14 @@ void loop() {
     displayJokesIfIdle(robot);
     updateLcdDisplay(robot);
     handleLcdAnimations(robot);
+    led_fx_update(robot); // Update LED effects
 
     if (!robot.initialActionTaken && robot.currentState == IDLE && millis() - robot.startTime >= robot.initialAutonomousDelay) {
         changeState(robot, OBSTACLE_AVOIDANCE);
         robot.initialActionTaken = true;
     }
 
-    if (millis() - robot.lastAppCommandTime < 100) {
-        // Manual command override
-    } else {
-        updateMotorControl(robot);
-    }
+    updateMotorControl(robot);
 
     if (millis() - robot.lastReportTime > robot.reportInterval) {
       robot.lastReportTime = millis();
