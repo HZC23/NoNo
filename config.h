@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 // === DEBUG MODE ===
-#define DEBUG_MODE true // Master switch for serial debug output
+#define DEBUG_MODE false // Master switch for serial debug output
 
 // ====================================================
 // === CONFIGURATION ESP32-S3 LITE ===
@@ -193,6 +193,11 @@
 #define NVS_NAMESPACE "nono-cfg"
 #define NVS_COMM_MODE_KEY "comm_mode"
 
+// === COMMUNICATION MODE CONFIGURATION ===
+// Change this to select the default communication mode at startup
+// See CommunicationMode enum below for valid options
+// This will be defined after the enum declaration
+
 // Keys for compass calibration data
 #define NVS_COMPASS_MAGIC_KEY "cps_magic"
 #define NVS_COMPASS_OFFSET_KEY "cps_offset"
@@ -338,6 +343,10 @@ enum CommunicationMode {
   COMM_MODE_SERIAL,
   COMM_MODE_XBOX
 };
+
+// === COMMUNICATION MODE DEFAULT (defined after enum) ===
+// Change this to select the default communication mode at startup
+#define DEFAULT_COMM_MODE COMM_MODE_XBOX  // COMM_MODE_XBOX or COMM_MODE_SERIAL
 
 // Enum for the sub-states of the emergency evasion maneuver
 enum EvasionState {

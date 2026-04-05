@@ -19,16 +19,24 @@ VL53L1X *vl53;
 Adafruit_NeoPixel pixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 Preferences preferences;
 
+// LCD availability flag - set to false by default, only true if LCD responds on I2C
+bool lcdAvailable = false;
+
 
 // --- RTOS & INTERRUPT ---
 SemaphoreHandle_t robotMutex = NULL;
 volatile bool bumperPressed = false;
-volatile unsigned long lastBumperPressTime = 0;
+volatile uint32_t lastBumperPressTime = 0;
 
 void IRAM_ATTR onBumperPress() {
-  if (millis() - lastBumperPressTime > BUMPER_DEBOUNCE_DELAY_MS) {
+  // Use FreeRTOS tick count instead of millis() in ISR
+  // millis() is not safe to call from ISR on some platforms
+  uint32_t currentTicks = xTaskGetTickCountFromISR();
+  uint32_t debounceDelayTicks = pdMS_TO_TICKS(BUMPER_DEBOUNCE_DELAY_MS);
+  
+  if ((currentTicks - lastBumperPressTime) > debounceDelayTicks) {
     bumperPressed = true;
-    lastBumperPressTime = millis();
+    lastBumperPressTime = currentTicks;
   }
 }
 
@@ -58,14 +66,22 @@ Tourelle::Tourelle(int pinH, int pinV) : servoH_pin(pinH), servoV_pin(pinV) {}
 void Tourelle::attach() {
     servoH.attach(servoH_pin);
     servoV.attach(servoV_pin);
+    attached = true;
+    LOG_DEBUG("Tourelle servos attached (pins %d, %d)", servoH_pin, servoV_pin);
 }
 
 void Tourelle::detach() {
     servoH.detach();
     servoV.detach();
+    attached = false;
+    LOG_DEBUG("Tourelle servos detached");
 }
 
 void Tourelle::write(int angleH, int angleV) {
+    if (!attached) {
+        LOG_WARN("Tourelle not attached, skipping write command");
+        return;
+    }
     servoH.write(angleH);
     servoV.write(angleV);
 }
@@ -138,7 +154,6 @@ void updateBatteryStatus(Robot& robot) {
 
 // NEW: Centralized scanning function
 void scanDistances(Robot& robot) {
-    LOG_DEBUG("Starting full environment scan...");
     for (int angle = SCAN_H_START_ANGLE; angle <= SCAN_H_END_ANGLE; angle += SCAN_H_STEP) {
         tourelle.write(angle, robot.servoNeutralTurret);
         delay(robot.turretScanDelay > 0 ? robot.turretScanDelay : 30); // Use a default delay if not set
@@ -156,7 +171,6 @@ void scanDistances(Robot& robot) {
         robot.scanDistances[angle] = distLaser;
     }
     tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
-    LOG_DEBUG("Scan complete.");
 }
 
 // REFACTORED to use scanDistances
@@ -176,7 +190,7 @@ int findClearestPath(Robot& robot) {
             bestAngle = angle;
         }
     }
-    LOG_DEBUG("findClearestPath result: angle=%d, score=%.2f", bestAngle, maxScore);
+    LOG_DEBUG("findClearestPath result: angle=%d", bestAngle);
     return bestAngle;
 }
 
@@ -211,21 +225,22 @@ int findWidestPath(Robot& robot) {
 
     if (best_start_angle != -1) {
         int middleAngle = best_start_angle + (max_len / 2) * SCAN_H_STEP;
-        LOG_DEBUG("findWidestPath result: widest segment of %d steps found at %d deg. Middle: %d", max_len, best_start_angle, middleAngle);
+        LOG_DEBUG("findWidestPath: found path at %d deg", middleAngle);
         return middleAngle;
     }
 
-    LOG_DEBUG("findWidestPath: No valid path found.");
     return -1;
 }
 
 // Function to clear a stuck I2C bus.
 // To be called before Wire.begin()
 void clearI2CBus() {
+  // Set pins to INPUT_PULLUP to allow pull-up resistors to work
   pinMode(SDA_PIN, INPUT_PULLUP);
   pinMode(SCL_PIN, INPUT_PULLUP);
   delay(10); // Allow pins to settle
 
+  // Check if bus is already clear
   if (digitalRead(SDA_PIN) == 1 && digitalRead(SCL_PIN) == 1) {
     LOG_DEBUG("I2C bus is clear.");
     return;
@@ -233,43 +248,64 @@ void clearI2CBus() {
 
   LOG_INFO("I2C bus is stuck. Attempting to clear...");
 
+  // Toggle SCL to try to unstick SDA
   pinMode(SCL_PIN, OUTPUT);
-  for (int i = 0; i < 16 && digitalRead(SDA_PIN) == 0; i++) {
-    digitalWrite(SCL_PIN, LOW);
-    delayMicroseconds(10);
+  digitalWrite(SCL_PIN, LOW);
+  delayMicroseconds(10);
+  
+  for (int i = 0; i < 9 && digitalRead(SDA_PIN) == 0; i++) {
+    // Toggle SCL clock 9 times (standard I2C recovery)
     digitalWrite(SCL_PIN, HIGH);
-    delayMicroseconds(10);
+    delayMicroseconds(5);
+    digitalWrite(SCL_PIN, LOW);
+    delayMicroseconds(5);
   }
 
-  pinMode(SDA_PIN, INPUT_PULLUP); // Set SDA back to input
-  pinMode(SCL_PIN, INPUT_PULLUP); // Set SCL back to input
+  // Generate STOP condition
+  digitalWrite(SCL_PIN, HIGH);
+  delayMicroseconds(5);
+  
+  pinMode(SDA_PIN, INPUT_PULLUP);
+  pinMode(SCL_PIN, INPUT_PULLUP);
+  delay(10);
 
   if (digitalRead(SDA_PIN) == 0) {
-    LOG_ERROR("Failed to clear I2C bus. Check hardware.");
+    LOG_ERROR("Failed to clear I2C bus. SDA is still stuck. Check hardware for short circuit.");
   } else {
     LOG_INFO("I2C bus unstuck successfully.");
   }
 }
 
-// Function to scan the I2C bus for connected devices
+// Function to scan the I2C bus for connected devices WITH TIMEOUT PROTECTION
 void scanI2CBus() {
-  LOG_INFO("Scanning I2C bus...");
+  LOG_DEBUG("Scanning I2C bus (with timeout protection)...");
+  
+  // Set I2C timeout to prevent hanging on unresponsive devices
+  // ESP32 Wire library timeout: default is very large, limit it to 50ms
+  Wire.setTimeOut(50);  // 50ms timeout
+  
   byte error, address;
   int nDevices = 0;
+  
   for(address = 1; address < 127; address++ ) {
     Wire.beginTransmission(address);
-    error = Wire.endTransmission();
+    error = Wire.endTransmission(true);  // true = send STOP condition
+    
     if (error == 0) {
-      LOG_INFO("I2C device found at address 0x%x", address);
+      LOG_DEBUG("I2C device found at address 0x%02x", address);
       nDevices++;
     } else if (error == 4) {
-      LOG_WARN("Unknown error at address 0x%x", address);
-    }    
+      LOG_DEBUG("Unknown error at address 0x%02x", address);
+    }
+    // Other error codes: 1=data too long, 2=address NACK, 3=data NACK, 4=other
+    
+    delay(5); // Small delay between probes
   }
+  
   if (nDevices == 0) {
     LOG_WARN("No I2C devices found.");
   } else {
-    LOG_INFO("Done I2C scanning, found %d devices.", nDevices);
+    LOG_DEBUG("I2C scan complete: found %d devices.", nDevices);
   }
 }
 
@@ -280,4 +316,44 @@ void headlightOn() {
 
 void headlightOff() {
   digitalWrite(PIN_PHARE, LOW);
+}
+
+// Initialize LCD without calling Wire.begin() (which blocks if device doesn't respond)
+// This is a workaround for DFRobot_RGBLCD1602::init() calling Wire.begin()
+void initializeLCD_Safe() {
+  if (!lcd) {
+    LOG_ERROR("LCD object is NULL!");
+    return;
+  }
+  
+  // DFRobot init() would call Wire.begin() here which blocks
+  // Instead, we manually do what init() does but skip Wire.begin()
+  LOG_INFO("Initializing LCD display...");
+  
+  // Call the begin() method directly (inherited from LiquidCrystal)
+  // This sets up the LCD communication but won't re-init Wire
+  // We need to use reflection or call it through the LCD object
+  
+  // For DFRobot at 0x60, these are the color registers
+  if (LCD_I2C_ADDR == 0x60) {
+    // Perform I2C ACK probe to verify LCD is present
+    LOG_INFO("Probing LCD at 0x%02x...", LCD_I2C_ADDR);
+    Wire.beginTransmission(LCD_I2C_ADDR);
+    byte error = Wire.endTransmission(true);  // Send STOP condition
+    
+    if (error == 0) {
+      // Device responded, now call init()
+      LOG_INFO("LCD found at 0x%02x - calling init()", LCD_I2C_ADDR);
+      lcd->init();
+      lcd->setBacklight(true);
+      LOG_INFO("LCD initialized successfully");
+      lcdAvailable = true;
+    } else {
+      LOG_ERROR("LCD NOT responding at 0x%02x (I2C error=%d)", LCD_I2C_ADDR, error);
+      lcdAvailable = false;
+    }
+  } else {
+    LOG_WARN("LCD at unusual address 0x%02x, may not work", LCD_I2C_ADDR);
+    lcdAvailable = false;
+  }
 }

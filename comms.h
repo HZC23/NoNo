@@ -15,7 +15,7 @@ struct Robot;
 
 // Terminal
 void checkSerial();
-void processCommand(String command);
+void processCommand(const char* command);
 
 // Telemetry
 void sendTelemetry(Robot& robot);

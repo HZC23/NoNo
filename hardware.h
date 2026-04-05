@@ -23,6 +23,7 @@ private:
     Servo servoV;
     int servoH_pin;
     int servoV_pin;
+    bool attached = false;  // Track attachment state
 
 public:
     Tourelle(int pinH, int pinV);
@@ -31,6 +32,7 @@ public:
     void write(int angleH, int angleV);
     int getAngleHorizontal();
     int getAngleVertical();
+    bool isAttached() const { return attached; }  // Check if servos are attached
 };
 
 
@@ -39,7 +41,7 @@ extern SemaphoreHandle_t robotMutex;
 
 // --- BUMPER INTERRUPT ---
 extern volatile bool bumperPressed;
-extern volatile unsigned long lastBumperPressTime;
+extern volatile uint32_t lastBumperPressTime;  // Use uint32_t to match xTaskGetTickCountFromISR()
 void IRAM_ATTR onBumperPress();
 
 // --- ULTRASONIC INTERRUPT ---
@@ -88,6 +90,7 @@ bool detectImpactOrStall(Robot& robot);
 
 // LED FX
 void led_fx_init();
+void led_fx_startup_test();
 void led_fx_update(const Robot& robot);
 void led_fx_set_all(uint8_t r, uint8_t g, uint8_t b);
 void led_fx_off();
@@ -111,5 +114,7 @@ void updateTurret(Robot& robot, bool isMovingForward);
 void syncTurretWithSteering(int steeringAngle);
 int setAckermannAngle(Robot& robot, int angleError, int speed);
 
+// LCD availability flag
+extern bool lcdAvailable;
 
 #endif // HARDWARE_H

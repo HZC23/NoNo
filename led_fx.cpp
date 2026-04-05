@@ -19,10 +19,18 @@ static int scanner_dir = 1;
 static unsigned long last_anim_tick = 0;
 
 void led_fx_init() {
+    LOG_INFO("LED FX: Starting NeoPixel initialization on pin %d with %d LEDs", NEOPIXEL_PIN, NEOPIXEL_COUNT);
     pixels.begin();
-    pixels.setBrightness(50); // Set a reasonable default brightness
+    LOG_INFO("LED FX: pixels.begin() completed");
+    
+    pixels.setBrightness(100); // INCREASED from 50 to make LEDs more visible
+    LOG_INFO("LED FX: Brightness set to 100 (was 50)");
+    
     pixels.clear();
+    LOG_INFO("LED FX: Buffer cleared");
+    
     pixels.show();
+    LOG_INFO("LED FX: NeoPixels initialized and displayed (should be OFF)");
 }
 
 // Helper to set color on the 3 visible LEDs only (indices 1, 2, 3)
@@ -84,8 +92,6 @@ void update_system_led(const Robot& robot) {
     // LED 0 is the system status LED
     if (robot.batteryIsCritical) {
         pixels.setPixelColor(0, (millis() % 200 < 100) ? COLOR_RED : COLOR_OFF);
-    } else if (robot.isBleConnected) {
-        pixels.setPixelColor(0, COLOR_BLUE);
     } else {
         // Heartbeat green
         float pulse = (sin(millis() / 1000.0 * 2 * PI) + 1) / 2;
@@ -144,7 +150,6 @@ void led_fx_update(const Robot& robot) {
             break;
 
         case MOVING_BACKWARD:
-        case AVOID_MANEUVER:
             led_fx_set_visible_only(COLOR_ORANGE);
             break;
 
@@ -180,4 +185,54 @@ void led_fx_update(const Robot& robot) {
     }
     
     pixels.show();
+}
+
+// --- Startup LED Test ---
+void led_fx_startup_test() {
+    LOG_INFO("LED FX: Starting LED startup test sequence...");
+    
+    // Test 1: All LEDs RED (400ms)
+    LOG_INFO("LED FX: Test 1 - All LEDs RED");
+    led_fx_set_all(255, 0, 0);
+    delay(400);
+    
+    // Test 2: All LEDs GREEN (400ms)
+    LOG_INFO("LED FX: Test 2 - All LEDs GREEN");
+    led_fx_set_all(0, 255, 0);
+    delay(400);
+    
+    // Test 3: All LEDs BLUE (400ms)
+    LOG_INFO("LED FX: Test 3 - All LEDs BLUE");
+    led_fx_set_all(0, 0, 255);
+    delay(400);
+    
+    // Test 4: All LEDs YELLOW (400ms)
+    LOG_INFO("LED FX: Test 4 - All LEDs YELLOW");
+    led_fx_set_all(255, 255, 0);
+    delay(400);
+    
+    // Test 5: Individual LED test - each LED lights up sequentially (200ms each)
+    LOG_INFO("LED FX: Test 5 - Individual LEDs (each 200ms)");
+    for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+        pixels.clear();
+        pixels.setPixelColor(i, COLOR_WHITE);
+        pixels.show();
+        delay(200);
+    }
+    
+    // Test 6: Rainbow effect (1s)
+    LOG_INFO("LED FX: Test 6 - Rainbow effect");
+    unsigned long rainbow_start = millis();
+    while (millis() - rainbow_start < 1000) {
+        for(int i=0; i<NEOPIXEL_COUNT; i++) {
+            uint16_t hue = (((i * 65536 / NEOPIXEL_COUNT) + (millis()/10)) % 65536);
+            pixels.setPixelColor(i, pixels.gamma32(pixels.ColorHSV(hue, 255, 255)));
+        }
+        pixels.show();
+        delay(30);
+    }
+    
+    // Turn off all LEDs
+    led_fx_off();
+    LOG_INFO("LED FX: Startup test sequence complete");
 }

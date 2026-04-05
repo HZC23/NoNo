@@ -65,20 +65,44 @@ void setup() {
 
     // Initialize I2C and LCD early for debugging the battery check.
     Wire.begin(SDA_PIN, SCL_PIN);
-    scanI2CBus(); // Call I2C scanner
-    lcd = new DFRobot_RGBLCD1602(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS);
-    lcd->init();
-    lcd->setBacklight(true);
+    delay(200); // Allow I2C bus to stabilize LONGER before setting clock
+    Wire.setClock(400000); // Set I2C clock BEFORE initializing devices
+    delay(100); // Additional delay for clock to stabilize
+    
+    LOG_INFO("I2C initialized on pins SDA=%d, SCL=%d at 400kHz", SDA_PIN, SCL_PIN);
+    
+    delay(50);
+    lcd = new DFRobot_RGBLCD1602(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS, &Wire);
+    
+    // Verify LCD is present BEFORE calling init() (which may timeout)
+    LOG_INFO("Checking if LCD is present at address 0x%02x...", LCD_I2C_ADDR);
+    Wire.beginTransmission(LCD_I2C_ADDR);
+    byte error = Wire.endTransmission(true);
+    
+    if (error == 0) {
+      LOG_INFO("LCD found at address 0x%02x - initializing display", LCD_I2C_ADDR);
+      // Now safe to call init() since device responded
+      lcd->init();
+      lcd->setBacklight(true);
+      lcdAvailable = true;
+      LOG_INFO("LCD initialized successfully");
+    } else {
+      LOG_ERROR("LCD NOT found at address 0x%02x (error=%d) - LCD disabled", LCD_I2C_ADDR, error);
+      LOG_WARN("Make sure LCD is properly connected to SDA=%d, SCL=%d", SDA_PIN, SCL_PIN);
+      lcdAvailable = false;
+    }
 
     while (readBatteryPercentage() < CRITICAL_BATTERY_LEVEL) {
       LOG_ERROR("Batterie trop faible pour initialiser. Chargez SVP!");
       
       // Display current voltage on the LCD for debugging
-      float voltage = readBatteryVoltage();
-      char buffer[16];
-      sprintf(buffer, "Batt: %.2fV", voltage);
-      lcd->clear();
-      lcd->print(buffer);
+      if (lcdAvailable) {
+        float voltage = readBatteryVoltage();
+        char buffer[16];
+        sprintf(buffer, "Batt: %.2fV", voltage);
+        lcd->clear();
+        lcd->print(buffer);
+      }
 
       // Flash red on all LEDs using the new system logic if possible, 
       // or just manual for this very early boot stage if robot isn't fully ready.
@@ -89,7 +113,10 @@ void setup() {
     LOG_INFO("Batterie OK pour l'initialisation.");
 
     preferences.begin(NVS_NAMESPACE, false);
-    robot.activeCommMode = (CommunicationMode)preferences.getInt(NVS_COMM_MODE_KEY, COMM_MODE_SERIAL);
+    // Load communication mode from NVS, fallback to DEFAULT_COMM_MODE from config.h
+    int savedCommMode = preferences.getInt(NVS_COMM_MODE_KEY, -1);  // -1 = not found in NVS
+    robot.activeCommMode = (savedCommMode >= 0) ? (CommunicationMode)savedCommMode : (CommunicationMode)DEFAULT_COMM_MODE;
+    bool commModeFromNVS = (savedCommMode >= 0);  // Track source
     preferences.end();
 
     robotMutex = xSemaphoreCreateMutex();
@@ -114,10 +141,10 @@ void setup() {
     // lcd->init(); // Already called
     
     if (robot.activeCommMode == COMM_MODE_XBOX) {
-        LOG_INFO("COMM MODE: Xbox Controller");
+        LOG_INFO("COMM MODE: Xbox Controller (from %s)", commModeFromNVS ? "NVS" : "config DEFAULT_COMM_MODE");
         xboxController.begin();
     } else {
-        LOG_INFO("COMM MODE: Serial Only");
+        LOG_INFO("COMM MODE: Serial Only (from %s)", commModeFromNVS ? "NVS" : "config DEFAULT_COMM_MODE");
     }
 
     setLcdText(robot, LCD_STARTUP_MESSAGE_1);
@@ -142,13 +169,23 @@ void setup() {
       vl53->setMeasurementTimingBudget(robot.laserTimingBudget);
       vl53->startContinuous(robot.laserInterMeasurementPeriod);
     }
-    Wire.setClock(400000);
 
     // The turret servo (tourelle) is attached/detached automatically by the changeState function
     // to manage power. The direction servo (Servodirection) is attached manually here
     // and remains attached for immediate control.
     Servodirection.attach(PINDIRECTION);
     Servodirection.write(robot.servoNeutralDir);
+    
+    // Test turret servo at startup to verify it's working
+    LOG_INFO("Testing turret servo at neutral position...");
+    tourelle.attach();
+    tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
+    delay(500);
+    tourelle.detach(); // Detach it for power saving in IDLE
+    LOG_INFO("Turret servo test complete");
+
+    // LED startup test sequence
+    led_fx_startup_test();
 
     LOG_INFO("--- SETUP COMPLETE ---");
     setLcdText(robot, LCD_STARTUP_MESSAGE_2);
@@ -163,13 +200,10 @@ void setup() {
 void loop() {
   robot.loopStartTime = millis();
 
-  // Debug prints for diagnostics
-  static unsigned long lastDebugPrintTime = 0;
-  if (millis() - lastDebugPrintTime > 1000) { // Print every second
-    LOG_DEBUG("bumperPressed=%d, activeCommMode=%d, currentState=%d", bumperPressed, robot.activeCommMode, robot.currentState);
-    lastDebugPrintTime = millis();
-  }
 
+
+  // CRITICAL SECTION #1: Bumper press handling & state changes
+  // KEEP LOCKED TIME MINIMAL (< 5ms for safety)
   if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
     if (bumperPressed) {
       bumperPressed = false;
@@ -180,17 +214,22 @@ void loop() {
         changeState(robot, EMERGENCY_EVASION, AVOID_IDLE);
       }
     }
+    xSemaphoreGive(robotMutex);
+  }
 
-    bool isMoving = (robot.currentState == MOVING_FORWARD || robot.currentState == FOLLOW_HEADING || robot.currentState == MAINTAIN_HEADING);
-    updateTurret(robot, isMoving);
+  // Handle Xbox controller input (non-blocking, can be outside critical section if controller access is thread-safe)
+  if (robot.activeCommMode == COMM_MODE_XBOX) {
+    xboxController.processControllers();
+  }
+  
+  // Serial input (non-blocking read)
+  checkSerial();
 
-    if (robot.activeCommMode == COMM_MODE_XBOX) {
-      xboxController.processControllers();
-    }
-    
-    checkSerial();
-    updateBatteryStatus(robot);
+  // Battery monitoring (non-critical data reads, but check critical state in mutex)
+  updateBatteryStatus(robot);
 
+  // CRITICAL SECTION #2: Battery critical state check
+  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
     if (robot.batteryIsCritical) {
       Arret();
       LOG_ERROR("Batterie Vide. Robot en pause jusqu'a recharge.");
@@ -206,8 +245,21 @@ void loop() {
         delay(250); 
       }
     }
+    xSemaphoreGive(robotMutex);
+  }
 
-    sensor_update_task(robot);
+  // Sensor readings and compass (can tolerate slight stale data)
+  sensor_update_task(robot);
+  
+  bool isMoving = false;
+  RobotState currentState = IDLE;
+  
+  // CRITICAL SECTION #3: Compass and sensor data updates
+  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
+    // Update turret position
+    isMoving = (robot.currentState == MOVING_FORWARD || robot.currentState == FOLLOW_HEADING || robot.currentState == MAINTAIN_HEADING);
+    updateTurret(robot, isMoving);
+    
     if (robot.currentState != IDLE || (millis() - robot.lastCompassReadTime > COMPASS_READ_INTERVAL_MS)) {
       float heading = getCalibratedHeading(robot);
       // Only update heading if compass is initialized (value is not NaN)
@@ -221,21 +273,28 @@ void loop() {
       robot.distanceLaser = vl53->readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
     }
     
-    displayJokesIfIdle(robot);
-    updateLcdDisplay(robot);
-    handleLcdAnimations(robot);
-    led_fx_update(robot); // Update LED effects
+    currentState = robot.currentState;
+    xSemaphoreGive(robotMutex);
+  }
 
+  // Display and LED updates (can use stale data from previous cycle)
+  displayJokesIfIdle(robot);
+  updateLcdDisplay(robot);
+  handleLcdAnimations(robot);
+  led_fx_update(robot); // Update LED effects
+
+  // CRITICAL SECTION #4: Motor control and state management
+  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
     updateMotorControl(robot);
 
     if (millis() - robot.lastReportTime > robot.reportInterval) {
       robot.lastReportTime = millis();
       sendTelemetry(robot);
     }
-    
     xSemaphoreGive(robotMutex);
   }
 
+  // Calculate loop timing
   robot.loopEndTime = millis();
   unsigned long loopDuration = robot.loopEndTime - robot.loopStartTime;
   if (loopDuration < LOOP_TARGET_PERIOD_MS) {

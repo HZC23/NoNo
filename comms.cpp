@@ -5,48 +5,71 @@
 #include "battery_utils.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <cstring>  // For strcasecmp, strncpy, strcmp, strchr
 
-// --- Parameters for manual turret control ---
-#define MANUAL_TURRET_JOYSTICK_DEADZONE 25      // Ignore small joystick movements
-const float TURRET_PAN_SMOOTHING_FACTOR = 0.4;  // Smoothing for pan. Higher is more reactive.
-const float TURRET_TILT_SMOOTHING_FACTOR = 0.2; // Smoothing for tilt.
+// --- Turret Control Configuration ---
+#define TURRET_DEADZONE 30          // Ignore small joystick movements
+#define TURRET_PAN_MIN 0            // Pan servo angle range
+#define TURRET_PAN_MAX 180
+#define TURRET_PAN_CENTER 90
+#define TURRET_TILT_MIN 45          // Tilt servo angle range  
+#define TURRET_TILT_MAX 135
+#define TURRET_TILT_CENTER 90
 
-// These variables will hold the smoothed position of the turret for manual control.
-static float smoothedPanAngle = 90.0;
-static float smoothedTiltAngle = 90.0;
-
-// --- Manual Turret Control Function ---
-static void updateTurretManual(ControllerPtr ctl) {
-    // Validate pointer before dereferencing
+// --- Turret Control Function (NEW SYSTEM) ---
+static void handleTurretControl(ControllerPtr ctl) {
     if (!ctl) {
-        LOG_WARN("updateTurretManual called with null controller pointer");
+        LOG_WARN("handleTurretControl: null controller pointer");
         return;
     }
 
-    // 1. Read right joystick axes
-    int rx = ctl->axisRX(); 
-    int ry = ctl->axisRY();
+    // Read joystick axes
+    int rightX = ctl->axisRX();  // RIGHT stick X (horizontal pan) - WORKS
+    int accelVal = ctl->throttle(); // RIGHT trigger (throttle/RT) - for TILT UP
+    int brakeVal = ctl->brake();    // LEFT trigger (brake/LT) - for TILT DOWN
+    int rightY = ctl->axisRY();     // RIGHT stick Y - test/debug
 
-    int targetPanAngle = 90;
-    int targetTiltAngle = 90;
 
-    // 2. Pan (X-axis) - Map joystick position directly to a target angle
-    if (abs(rx) > MANUAL_TURRET_JOYSTICK_DEADZONE) {
-        targetPanAngle = map(rx, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, 180, 0); // Inverted
+
+    // Calculate tilt from triggers: RT makes it look UP (45°), LT makes it look DOWN (135°)
+    // Trigger values: 0-1023
+    // accelVal (RT) positive → look up, brakeVal (LT) positive → look down
+    int tiltAxis = accelVal - brakeVal;  // RT positive = up, LT negative = down
+    
+    // Apply deadzone
+    if (abs(rightX) < TURRET_DEADZONE) rightX = 0;
+    if (abs(tiltAxis) < TURRET_DEADZONE) tiltAxis = 0;
+
+    // Map to servo angles
+    int panAngle = TURRET_PAN_CENTER;
+    int tiltAngle = TURRET_TILT_CENTER;
+
+    if (rightX != 0) {
+        // RIGHT stick LEFT (negative) → pan left (higher angle ~180)
+        // RIGHT stick RIGHT (positive) → pan right (lower angle ~0)
+        panAngle = map(rightX, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, TURRET_PAN_MAX, TURRET_PAN_MIN);
     }
 
-    // 3. Tilt (Y-axis) - Map joystick position directly to a target angle
-    if (abs(ry) > MANUAL_TURRET_JOYSTICK_DEADZONE) {
-        // Invert tilt: stick up (negative ry) should go to a smaller angle (look up)
-        targetTiltAngle = map(ry, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, 45, 135);
+    if (abs(tiltAxis) > TURRET_DEADZONE) {
+        // RT trigger (accelVal) positive → look up (lower tilt angle ~45° / TURRET_TILT_MIN)
+        // LT trigger (brakeVal) positive → look down (higher tilt angle ~135° / TURRET_TILT_MAX)
+        // Combined: accelVal - brakeVal ranges from -1023 to +1023
+        tiltAngle = map(tiltAxis, -1023, 1023, TURRET_TILT_MAX, TURRET_TILT_MIN);
     }
 
-    // 4. Apply smoothing (exponential moving average)
-    smoothedPanAngle = (smoothedPanAngle * (1.0 - TURRET_PAN_SMOOTHING_FACTOR)) + (targetPanAngle * TURRET_PAN_SMOOTHING_FACTOR);
-    smoothedTiltAngle = (smoothedTiltAngle * (1.0 - TURRET_TILT_SMOOTHING_FACTOR)) + (targetTiltAngle * TURRET_TILT_SMOOTHING_FACTOR);
+    // Constrain to valid ranges
+    panAngle = constrain(panAngle, TURRET_PAN_MIN, TURRET_PAN_MAX);
+    tiltAngle = constrain(tiltAngle, TURRET_TILT_MIN, TURRET_TILT_MAX);
 
-    // 5. Write to servos
-    tourelle.write((int)smoothedPanAngle, (int)smoothedTiltAngle);
+    // Attach tourelle if needed
+    if (!tourelle.isAttached()) {
+        tourelle.attach();
+    }
+
+    // Write to servos
+    tourelle.write(panAngle, tiltAngle);
+
+
 }
 
 extern Robot robot; // Declare the global robot object
@@ -86,7 +109,7 @@ void checkSerial() {
         if (incomingChar == '\n' || incomingChar == '\r') {
             if (cmdIndex > 0) {
                 cmdBuffer[cmdIndex] = '\0';
-                processCommand(String(cmdBuffer));
+                processCommand(cmdBuffer);  // Pass char array directly, no String
                 cmdIndex = 0;
             }
         } else if (cmdIndex < CMD_BUFFER_SIZE - 1) {
@@ -95,41 +118,62 @@ void checkSerial() {
     }
 }
 
-void processCommand(String command) {
-    if (command.length() == 0) return;
-    LOG_DEBUG("Command received: [%s]", command.c_str());
+void processCommand(const char* command) {
+    // Safety checks - use standard C functions only (no String class)
+    if (command == nullptr || command[0] == '\0') return;
+    LOG_DEBUG("Command received: [%s]", command);
+    
+    // Copy to local buffer for parsing (strtok_r modifies its input)
     char cmdBuffer[CMD_BUFFER_SIZE];
-    command.toCharArray(cmdBuffer, sizeof(cmdBuffer));
+    strncpy(cmdBuffer, command, sizeof(cmdBuffer) - 1);
+    cmdBuffer[sizeof(cmdBuffer) - 1] = '\0';
+    
+    // Parse command format: "TOKEN:value_str" (e.g., "M:100,50" or "E:AVOID")
     char* strtok_state;
     char* token = strtok_r(cmdBuffer, ":", &strtok_state);
     if (token == nullptr) return;
+    
     char* value_str = strtok_r(NULL, "", &strtok_state);
     int value = (value_str != nullptr) ? atoi(value_str) : 0;
 
     if (strcasecmp(token, "M") == 0) {
+        // Manual movement command: M:velocity,turn
         if (value_str != nullptr) {
-            int velocity = 0; int turn = 0;
+            int velocity = 0, turn = 0;
             sscanf(value_str, "%d,%d", &velocity, &turn);
             robot.manualTargetVelocity = velocity;
             robot.manualTargetTurn = turn;
-            if (velocity == 0 && turn == 0) { changeState(robot, IDLE); }
-            else { changeState(robot, MANUAL_COMMAND_MODE); }
+            if (velocity == 0 && turn == 0) { 
+                changeState(robot, IDLE); 
+            } else { 
+                changeState(robot, MANUAL_COMMAND_MODE); 
+            }
         }
-    } else if (strcasecmp(token, "E") == 0) {
+    } 
+    else if (strcasecmp(token, "E") == 0) {
+        // State change command: E:AVOID|SENTRY|IDLE
         if (value_str != nullptr) {
-            if (strcasecmp(value_str, "AVOID") == 0) changeState(robot, SMART_AVOIDANCE);
-            else if (strcasecmp(value_str, "SENTRY") == 0) changeState(robot, SENTRY_MODE);
-            else if (strcasecmp(value_str, "IDLE") == 0) changeState(robot, IDLE);
+            if (strcasecmp(value_str, "AVOID") == 0) {
+                changeState(robot, SMART_AVOIDANCE);
+            } else if (strcasecmp(value_str, "SENTRY") == 0) {
+                changeState(robot, SENTRY_MODE);
+            } else if (strcasecmp(value_str, "IDLE") == 0) {
+                changeState(robot, IDLE);
+            }
         }
-    } else if (strcasecmp(token, "lcd_log") == 0) {
+    } 
+    else if (strcasecmp(token, "lcd_log") == 0) {
+        // LCD logging toggle: lcd_log:0|1
         robot.lcdLogsEnabled = (value == 1);
         LOG_INFO("LCD logs set to: %d", robot.lcdLogsEnabled);
-        if (!robot.lcdLogsEnabled) {
+        if (!robot.lcdLogsEnabled && lcdAvailable) {
             lcd->clear();
             lcd->setCursor(0, 0);
             lcd->print("LCD Logs OFF");
         }
-    } else if (strcasecmp(token, "sm") == 0) {
+    } 
+    else if (strcasecmp(token, "sm") == 0) {
+        // Communication mode setting: sm:xbox|serial
         if (value_str != nullptr) {
             Preferences preferences;
             CommunicationMode newMode = robot.activeCommMode;
@@ -150,7 +194,7 @@ void processCommand(String command) {
             }
         }
     }
-    // ... other commands can be added here
+    // Additional commands can be added here with the same pattern
 }
 
 // --- Telemetry & State ---
@@ -175,6 +219,12 @@ void sendPeriodicData(Robot& robot) {
 
 // --- Display Implementation ---
 void setLcdText(Robot& robot, const char* text, bool isContinuation) {
+    // Safety check: if LCD is not available, just log and return
+    if (!lcdAvailable) {
+        LOG_DEBUG("setLcdText called but LCD not available: %s", text);
+        return;
+    }
+
     if (!isContinuation && strcmp(text, robot.lcdText) == 0) {
         return;
     }
@@ -340,9 +390,6 @@ void XboxControllerBluepad::onConnectedController(ControllerPtr ctl) {
             myControllers[i] = ctl;
             lastStates[i] = ControllerState();
             trigger_rumble(50, 0, 150);
-            // Reset manual turret angles on new connection
-            smoothedPanAngle = robot_ptr->servoNeutralTurret;
-            smoothedTiltAngle = robot_ptr->servoNeutralTurret;
             break;
         }
     }
@@ -375,6 +422,9 @@ bool XboxControllerBluepad::isConnected() {
 
 void XboxControllerBluepad::processControllers() {
     BP32.update();
+    
+
+    
     for (int i = 0; i < BP32_MAX_CONTROLLERS; i++) {
         ControllerPtr ctl = myControllers[i];
         if (ctl && ctl->isConnected() && ctl->hasData()) {
@@ -388,6 +438,7 @@ void XboxControllerBluepad::processControllers() {
             #define WAS_MISC_BUTTON_PRESSED(button) ((currentMiscButtons & button) && !(last.miscButtons & button))
 
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_MANUAL)) {
+                LOG_INFO("XBOX: TOGGLE_MANUAL button pressed");
                 trigger_rumble(40, 120, 0);
                 if (robot_ptr->currentState == MANUAL_COMMAND_MODE) {
                     changeState(*robot_ptr, IDLE);
@@ -397,16 +448,20 @@ void XboxControllerBluepad::processControllers() {
                 }
             }
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_AVOIDANCE)) {
+                LOG_INFO("XBOX: TOGGLE_AVOIDANCE button pressed");
                 trigger_rumble(40, 120, 0);
                 if (robot_ptr->currentState == SMART_AVOIDANCE) changeState(*robot_ptr, IDLE);
                 else changeState(*robot_ptr, SMART_AVOIDANCE);
             }
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_HEADLIGHT)) {
+                LOG_INFO("XBOX: TOGGLE_HEADLIGHT (Button A) pressed - headlight was %s", robot_ptr->headlightOn ? "ON" : "OFF");
                 trigger_rumble(40, 120, 0);
                 robot_ptr->headlightOn = !robot_ptr->headlightOn;
                 if (robot_ptr->headlightOn) {
+                    LOG_INFO("Headlight ON via Xbox");
                     headlightOn();
                 } else {
+                    LOG_INFO("Headlight OFF via Xbox");
                     headlightOff();
                 }
             }
@@ -446,18 +501,15 @@ void XboxControllerBluepad::processControllers() {
                 }
             }
 
+            // --- TURRET CONTROL (ALWAYS AVAILABLE VIA RIGHT JOYSTICK) ---
+            handleTurretControl(ctl);
+
             if (robot_ptr->currentState == MANUAL_COMMAND_MODE) {
                 // Read all axes and triggers
                 int32_t joyY_left = ctl->axisY();
                 int32_t joyX_left = ctl->axisX();
-                int32_t joyY_right = ctl->axisRY();
-                int32_t joyX_right = ctl->axisRX();
                 int32_t lt_val = ctl->brake();
                 int32_t rt_val = ctl->throttle();
-
-                // --- Turret Control (Right Stick) ---
-                updateTurretManual(ctl);
-
 
                 // --- Movement Control (Left Stick + Triggers) ---
                 if (lt_val > 150 || rt_val > 150) {

@@ -1,6 +1,8 @@
 #include "hardware.h"
 #include "robot.h"
 #include "logger.h"
+#include <cstring>  // For strchr, strncpy, strcasecmp, strtok_r
+#include <cctype>   // For isspace
 
 // Define the global SdFat object
 SdFat sd;
@@ -81,6 +83,36 @@ void getRandomJokeFromSD(Robot& robot, const char* filename, char* buffer, size_
     jokesFile.close();
 }
 
+// Helper function to trim leading/trailing whitespace (in place)
+static void trim_string(char* str) {
+    if (str == nullptr) return;
+    
+    // Trim leading whitespace
+    char* start = str;
+    while (*start && isspace((unsigned char)*start)) start++;
+    
+    // Handle empty string after trimming leading whitespace
+    if (*start == '\0') {
+        str[0] = '\0';
+        return;
+    }
+    
+    // Trim trailing whitespace
+    char* end = str + strlen(start) - 1;
+    while (end >= start && isspace((unsigned char)*end)) end--;
+    
+    // Shift and null terminate
+    size_t len = end - start + 1;
+    memmove(str, start, len);
+    str[len] = '\0';
+}
+
+// Helper to check if a line is empty or a comment
+static bool should_skip_line(const char* line) {
+    while (*line && isspace((unsigned char)*line)) line++;
+    return *line == '\0' || *line == '#';
+}
+
 bool loadConfig(Robot& robot) {
     if (!robot.sdCardReady) {
         LOG_WARN("SD Card not ready for loadConfig.");
@@ -95,10 +127,14 @@ bool loadConfig(Robot& robot) {
 
     LOG_INFO("Loading config from /config.txt...");
 
+    // Single line buffer - reused for each config line
+    char lineBuffer[128];
+    size_t lineLen = 0;
+
     while (configFile.available()) {
-        // Manual implementation of readStringUntil
-        String line = "";
-        while (configFile.available()) {
+        // Read one line into buffer
+        lineLen = 0;
+        while (configFile.available() && lineLen < sizeof(lineBuffer) - 1) {
             char c = configFile.read();
             if (c == '\n' || c == '\r') {
                 if (c == '\r' && configFile.peek() == '\n') {
@@ -106,207 +142,104 @@ bool loadConfig(Robot& robot) {
                 }
                 break;
             }
-            line += c;
+            lineBuffer[lineLen++] = c;
         }
-        line.trim();
+        lineBuffer[lineLen] = '\0';
 
-        if (line.isEmpty() || line.startsWith("#")) {
+        // Trim the line in place
+        trim_string(lineBuffer);
+
+        // Skip empty lines and comments
+        if (should_skip_line(lineBuffer)) {
             continue;
         }
 
-        int equalsIndex = line.indexOf('=');
-        if (equalsIndex == -1) {
-            LOG_WARN("Invalid config line: %s", line.c_str());
+        // Parse "KEY=VALUE" format using standard C string functions
+        char* equalsPos = strchr(lineBuffer, '=');
+        if (equalsPos == nullptr) {
+            LOG_WARN("Invalid config line (no '='): %s", lineBuffer);
             continue;
         }
 
-        String key = line.substring(0, equalsIndex);
-        String value = line.substring(equalsIndex + 1);
-        key.trim();
-        value.trim();
+        // Split key and value - prevent buffer overflow
+        size_t keyLen = equalsPos - lineBuffer;
+        char key[64];
+        size_t copyLen = (keyLen < sizeof(key) - 1) ? keyLen : (sizeof(key) - 1);
+        strncpy(key, lineBuffer, copyLen);
+        key[copyLen] = '\0';  // Ensure null termination
+        trim_string(key);
+
+        char* valuePtr = equalsPos + 1;
+        // Create a value buffer for trimming
+        char value[64];
+        strncpy(value, valuePtr, sizeof(value) - 1);
+        value[sizeof(value) - 1] = '\0';
+        trim_string(value);
 
         // Skip empty values
-        if (value.length() == 0) {
-            LOG_WARN("Empty config value for key: %s", key.c_str());
+        if (value[0] == '\0') {
+            LOG_WARN("Empty config value for key: %s", key);
             continue;
         }
 
-        if (key.equalsIgnoreCase("VITESSE_MOYENNE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VITESSE_MOYENNE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.speedAvg = parsed;
-            }
-        } else if (key.equalsIgnoreCase("VITESSE_LENTE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VITESSE_LENTE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.speedSlow = parsed;
-            }
-        } else if (key.equalsIgnoreCase("VITESSE_ROTATION")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VITESSE_ROTATION value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.speedRotation = parsed;
-            }
-        } else if (key.equalsIgnoreCase("TOLERANCE_VIRAGE")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid TOLERANCE_VIRAGE value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.turnTolerance = parsed;
-            }
-        } else if (key.equalsIgnoreCase("KP_HEADING")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid KP_HEADING value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.KpHeading = parsed;
-            }
-        } else if (key.equalsIgnoreCase("VITESSE_ROTATION_MAX")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VITESSE_ROTATION_MAX value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.speedRotationMax = parsed;
-            }
-        } else if (key.equalsIgnoreCase("CALIBRATION_MOTEUR_B")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid CALIBRATION_MOTEUR_B value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.motorBCalibration = parsed;
-            }
-        } else if (key.equalsIgnoreCase("SEUIL_BASCULE_DIRECTION")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid SEUIL_BASCULE_DIRECTION value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.pivotAngleThreshold = parsed;
-            }
-        } else if (key.equalsIgnoreCase("MIN_SPEED_TO_MOVE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid MIN_SPEED_TO_MOVE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.minSpeedToMove = parsed;
-            }
-        } else if (key.equalsIgnoreCase("NEUTRE_DIRECTION")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid NEUTRE_DIRECTION value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoNeutralDir = parsed;
-            }
-        } else if (key.equalsIgnoreCase("NEUTRE_TOURELLE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid NEUTRE_TOURELLE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoNeutralTurret = parsed;
-            }
-        } else if (key.equalsIgnoreCase("SERVO_DIR_MIN")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid SERVO_DIR_MIN value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoDirMin = parsed;
-            }
-        } else if (key.equalsIgnoreCase("SERVO_DIR_MAX")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid SERVO_DIR_MAX value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoDirMax = parsed;
-            }
-        } else if (key.equalsIgnoreCase("ANGLE_TETE_BASSE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid ANGLE_TETE_BASSE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoAngleHeadDown = parsed;
-            }
-        } else if (key.equalsIgnoreCase("ANGLE_SOL")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid ANGLE_SOL value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.servoAngleGround = parsed;
-            }
-        } else if (key.equalsIgnoreCase("ACCEL_RATE")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid ACCEL_RATE value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.accelRate = parsed;
-            }
-        } else if (key.equalsIgnoreCase("DIFF_STRENGTH")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid DIFF_STRENGTH value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.diffStrength = parsed;
-            }
-        } else if (key.equalsIgnoreCase("FWD_DIFF_COEFF")) {
-            float parsed = value.toFloat();
-            if (parsed == 0.0 && !value.startsWith("0")) {
-                LOG_WARN("Invalid FWD_DIFF_COEFF value: %s (parsed as 0.0)", value.c_str());
-            } else {
-                robot.fwdDiffCoeff = parsed;
-            }
-        } else if (key.equalsIgnoreCase("AVOID_BACKUP_DURATION_MS")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid AVOID_BACKUP_DURATION_MS value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.avoidBackupDuration = parsed;
-            }
-        } else if (key.equalsIgnoreCase("MIN_DIST_FOR_VALID_PATH")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid MIN_DIST_FOR_VALID_PATH value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.minDistForValidPath = parsed;
-            }
-        } else if (key.equalsIgnoreCase("TURRET_MOVE_TIME_MS")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid TURRET_MOVE_TIME_MS value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.turretMoveTime = parsed;
-            }
-        } else if (key.equalsIgnoreCase("SEUIL_VIDE")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid SEUIL_VIDE value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.seuilVide = parsed;
-            }
-        } else if (key.equalsIgnoreCase("VL53L1X_TIMING_BUDGET_US")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VL53L1X_TIMING_BUDGET_US value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.laserTimingBudget = parsed;
-            }
-        } else if (key.equalsIgnoreCase("VL53L1X_INTER_MEASUREMENT_PERIOD_MS")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid VL53L1X_INTER_MEASUREMENT_PERIOD_MS value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.laserInterMeasurementPeriod = parsed;
-            }
-        } else if (key.equalsIgnoreCase("INITIAL_AUTONOMOUS_DELAY_MS")) {
-            int parsed = value.toInt();
-            if (parsed == 0 && value != "0") {
-                LOG_WARN("Invalid INITIAL_AUTONOMOUS_DELAY_MS value: %s (parsed as 0)", value.c_str());
-            } else {
-                robot.initialAutonomousDelay = parsed;
-            }
+        // Process each config key using standard C case-insensitive compare
+#define CONFIG_INT(KEY_NAME, ROBOT_FIELD) \
+        if (strcasecmp(key, KEY_NAME) == 0) { \
+            int parsed = atoi(value); \
+            if (parsed == 0 && strcmp(value, "0") != 0) { \
+                LOG_WARN("Invalid " KEY_NAME " value: %s (parsed as 0)", value); \
+            } else { \
+                robot.ROBOT_FIELD = parsed; \
+            } \
+            continue; \
         }
+
+#define CONFIG_FLOAT(KEY_NAME, ROBOT_FIELD) \
+        if (strcasecmp(key, KEY_NAME) == 0) { \
+            char* endptr; \
+            float parsed = strtof(value, &endptr); \
+            if (endptr == value || (*endptr != '\0' && !isspace((unsigned char)*endptr))) { \
+                LOG_WARN("Invalid " KEY_NAME " value: %s (parse failed)", value); \
+            } else { \
+                robot.ROBOT_FIELD = parsed; \
+            } \
+            continue; \
+        }
+
+        // Integer configs
+        CONFIG_INT("VITESSE_MOYENNE", speedAvg);
+        CONFIG_INT("VITESSE_LENTE", speedSlow);
+        CONFIG_INT("VITESSE_ROTATION", speedRotation);
+        CONFIG_INT("VITESSE_ROTATION_MAX", speedRotationMax);
+        CONFIG_INT("MIN_SPEED_TO_MOVE", minSpeedToMove);
+        CONFIG_INT("NEUTRE_DIRECTION", servoNeutralDir);
+        CONFIG_INT("NEUTRE_TOURELLE", servoNeutralTurret);
+        CONFIG_INT("SERVO_DIR_MIN", servoDirMin);
+        CONFIG_INT("SERVO_DIR_MAX", servoDirMax);
+        CONFIG_INT("ANGLE_TETE_BASSE", servoAngleHeadDown);
+        CONFIG_INT("ANGLE_SOL", servoAngleGround);
+        CONFIG_INT("AVOID_BACKUP_DURATION_MS", avoidBackupDuration);
+        CONFIG_INT("MIN_DIST_FOR_VALID_PATH", minDistForValidPath);
+        CONFIG_INT("TURRET_MOVE_TIME_MS", turretMoveTime);
+        CONFIG_INT("SEUIL_VIDE", seuilVide);
+        CONFIG_INT("VL53L1X_TIMING_BUDGET_US", laserTimingBudget);
+        CONFIG_INT("VL53L1X_INTER_MEASUREMENT_PERIOD_MS", laserInterMeasurementPeriod);
+        CONFIG_INT("INITIAL_AUTONOMOUS_DELAY_MS", initialAutonomousDelay);
+
+        // Float configs
+        CONFIG_FLOAT("TOLERANCE_VIRAGE", turnTolerance);
+        CONFIG_FLOAT("KP_HEADING", KpHeading);
+        CONFIG_FLOAT("CALIBRATION_MOTEUR_B", motorBCalibration);
+        CONFIG_FLOAT("SEUIL_BASCULE_DIRECTION", pivotAngleThreshold);
+        CONFIG_FLOAT("ACCEL_RATE", accelRate);
+        CONFIG_FLOAT("DIFF_STRENGTH", diffStrength);
+        CONFIG_FLOAT("FWD_DIFF_COEFF", fwdDiffCoeff);
+
+        #undef CONFIG_INT
+        #undef CONFIG_FLOAT
+
+        // Log if unknown key
+        LOG_WARN("Unknown config key: %s", key);
     }
 
     configFile.close();
