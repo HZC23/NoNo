@@ -12,6 +12,7 @@ NoNo is a differential-drive mobile robot based on the ESP32-S3, designed for au
 - **[Commands](./commands.md):** An exhaustive list of serial commands to control the robot.
 - **[Calibration](./calibration.md):** Detailed instructions for calibrating the magnetometer.
 - **[App Guide](./app_guide.md):** A guide for connecting to and controlling the robot via a serial terminal or application.
+- **[Controller Guide](./controller_guide.md):** A guide for controlling the robot using an Xbox wireless controller.
 
 ## Main Features
 

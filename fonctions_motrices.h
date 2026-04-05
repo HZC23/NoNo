@@ -1,11 +1,16 @@
 #ifndef FONCTIONS_MOTRICES_H
 #define FONCTIONS_MOTRICES_H
 
-#include "robot.h"
+#include "hardware.h"
+#include "config.h"
 
-// --- Main State Machine Functions ---
-void updateMotorControl(Robot& robot);
+// Forward declaration
+struct Robot;
+
+// --- Public Function Prototypes ---
+const char* stateToString(RobotState state);
 void changeState(Robot& robot, RobotState newState, ObstacleAvoidanceState avoidState = AVOID_IDLE);
-void calculateManualPwm(Robot& robot, int& outPwmA, int& outPwmB); // New prototype
+void updateMotorControl(Robot& robot);
 
 #endif // FONCTIONS_MOTRICES_H
+

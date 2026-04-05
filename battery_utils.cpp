@@ -2,14 +2,6 @@
 #include "robot.h"
 #include "config.h"
 
-void PhareAllume() {
-  digitalWrite(PIN_PHARE, HIGH);
-}
-
-void PhareEteint() {
-  digitalWrite(PIN_PHARE, LOW);
-}
-
 // Non-blocking moving average filter for battery voltage
 float readBatteryVoltage() {
     const int BATTERY_READINGS_COUNT = 10;

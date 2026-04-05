@@ -1,7 +1,55 @@
 #include "comms.h"
+#include "robot.h"
+#include "logger.h"
 #include "hardware.h" // For hardware objects used by xbox controller and others
-#include "logger.h" // Include the new logger
+#include "battery_utils.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
+
+// --- Parameters for manual turret control ---
+#define MANUAL_TURRET_JOYSTICK_DEADZONE 25      // Ignore small joystick movements
+const float TURRET_PAN_SMOOTHING_FACTOR = 0.4;  // Smoothing for pan. Higher is more reactive.
+const float TURRET_TILT_SMOOTHING_FACTOR = 0.2; // Smoothing for tilt.
+
+// These variables will hold the smoothed position of the turret for manual control.
+static float smoothedPanAngle = 90.0;
+static float smoothedTiltAngle = 90.0;
+
+// --- Manual Turret Control Function ---
+static void updateTurretManual(ControllerPtr ctl) {
+    // Validate pointer before dereferencing
+    if (!ctl) {
+        LOG_WARN("updateTurretManual called with null controller pointer");
+        return;
+    }
+
+    // 1. Read right joystick axes
+    int rx = ctl->axisRX(); 
+    int ry = ctl->axisRY();
+
+    int targetPanAngle = 90;
+    int targetTiltAngle = 90;
+
+    // 2. Pan (X-axis) - Map joystick position directly to a target angle
+    if (abs(rx) > MANUAL_TURRET_JOYSTICK_DEADZONE) {
+        targetPanAngle = map(rx, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, 180, 0); // Inverted
+    }
+
+    // 3. Tilt (Y-axis) - Map joystick position directly to a target angle
+    if (abs(ry) > MANUAL_TURRET_JOYSTICK_DEADZONE) {
+        // Invert tilt: stick up (negative ry) should go to a smaller angle (look up)
+        targetTiltAngle = map(ry, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, 45, 135);
+    }
+
+    // 4. Apply smoothing (exponential moving average)
+    smoothedPanAngle = (smoothedPanAngle * (1.0 - TURRET_PAN_SMOOTHING_FACTOR)) + (targetPanAngle * TURRET_PAN_SMOOTHING_FACTOR);
+    smoothedTiltAngle = (smoothedTiltAngle * (1.0 - TURRET_TILT_SMOOTHING_FACTOR)) + (targetTiltAngle * TURRET_TILT_SMOOTHING_FACTOR);
+
+    // 5. Write to servos
+    tourelle.write((int)smoothedPanAngle, (int)smoothedTiltAngle);
+}
+
+extern Robot robot; // Declare the global robot object
 
 // --- Global Xbox Controller Instance ---
 XboxControllerBluepad xboxController(robot);
@@ -56,6 +104,7 @@ void processCommand(String command) {
     char* token = strtok_r(cmdBuffer, ":", &strtok_state);
     if (token == nullptr) return;
     char* value_str = strtok_r(NULL, "", &strtok_state);
+    int value = (value_str != nullptr) ? atoi(value_str) : 0;
 
     if (strcasecmp(token, "M") == 0) {
         if (value_str != nullptr) {
@@ -72,28 +121,39 @@ void processCommand(String command) {
             else if (strcasecmp(value_str, "SENTRY") == 0) changeState(robot, SENTRY_MODE);
             else if (strcasecmp(value_str, "IDLE") == 0) changeState(robot, IDLE);
         }
+    } else if (strcasecmp(token, "lcd_log") == 0) {
+        robot.lcdLogsEnabled = (value == 1);
+        LOG_INFO("LCD logs set to: %d", robot.lcdLogsEnabled);
+        if (!robot.lcdLogsEnabled) {
+            lcd->clear();
+            lcd->setCursor(0, 0);
+            lcd->print("LCD Logs OFF");
+        }
+    } else if (strcasecmp(token, "sm") == 0) {
+        if (value_str != nullptr) {
+            Preferences preferences;
+            CommunicationMode newMode = robot.activeCommMode;
+            if (strcasecmp(value_str, "xbox") == 0) {
+                newMode = COMM_MODE_XBOX;
+            } else if (strcasecmp(value_str, "serial") == 0) {
+                newMode = COMM_MODE_SERIAL;
+            }
+
+            if (newMode != robot.activeCommMode) {
+                robot.activeCommMode = newMode;
+                preferences.begin(NVS_NAMESPACE, false);
+                preferences.putInt(NVS_COMM_MODE_KEY, newMode);
+                preferences.end();
+                LOG_INFO("Comm mode set to %s. Reboot required to apply.", value_str);
+            } else {
+                LOG_INFO("Comm mode is already %s.", value_str);
+            }
+        }
     }
     // ... other commands can be added here
 }
 
 // --- Telemetry & State ---
-const char* stateToString(RobotState state) {
-    switch (state) {
-        case IDLE: return "IDLE";
-        case MOVING_FORWARD: return "MOVING_FORWARD";
-        case MOVING_BACKWARD: return "MOVING_BACKWARD";
-        case TURNING_LEFT: return "TURNING_LEFT";
-        case TURNING_RIGHT: return "TURNING_RIGHT";
-        case MANUAL_COMMAND_MODE: return "MANUAL_COMMAND_MODE";
-        case OBSTACLE_AVOIDANCE: return "OBSTACLE_AVOIDANCE";
-        case SMART_AVOIDANCE: return "SMART_AVOIDANCE";
-        case EMERGENCY_EVASION: return "EMERGENCY_EVASION";
-        case STUCK: return "STUCK";
-        case SENTRY_MODE: return "SENTRY_MODE";
-        default: return "UNKNOWN";
-    }
-}
-
 void sendTelemetry(Robot& robot) {
     JsonDocument doc;
     doc["state"] = stateToString(robot.currentState);
@@ -101,7 +161,7 @@ void sendTelemetry(Robot& robot) {
     doc["distance"] = robot.dusm;
     doc["distanceLaser"] = robot.distanceLaser;
     doc["battery"] = readBatteryPercentage();
-    doc["speedTarget"] = robot.vitesseCible;
+    doc["speedTarget"] = robot.targetSpeed;
     serializeJson(doc, Serial);
     Serial.println();
 }
@@ -114,85 +174,99 @@ void sendPeriodicData(Robot& robot) {
 }
 
 // --- Display Implementation ---
-void _applyWordWrap(const char* in, char* out, size_t bufferSize, int lineLength) {
-    memset(out, 0, bufferSize);
-    const char* source = in;
-    int outIdx = 0;
-    while (strlen(source) > 0 && outIdx < bufferSize - 2) {
-        if ((int)strlen(source) <= lineLength) {
-            strcat(out, source);
-            break;
-        }
-        int breakPoint = -1;
-        for (int i = 0; i <= lineLength; i++) {
-            if (source[i] == ' ') {
-                breakPoint = i;
-            }
-            if (source[i] == '\0') {
-                breakPoint = -1; 
-                break;
-            }
-        }
-        if (breakPoint == -1) {
-            breakPoint = lineLength;
-        }
-        strncat(out, source, breakPoint);
-        outIdx += breakPoint;
-        out[outIdx++] = '\n';
-        out[outIdx] = '\0';
-        source += breakPoint + (source[breakPoint] == ' ' ? 1 : 0);
-    }
-}
-
 void setLcdText(Robot& robot, const char* text, bool isContinuation) {
-    if (robot.lcdAnimationState == Robot::LcdAnimationState::ANIM_IDLE && strncmp(text, robot.lcdText, MAX_LCD_TEXT_LENGTH) == 0) {
+    if (!isContinuation && strcmp(text, robot.lcdText) == 0) {
         return;
     }
-    if (!isContinuation) {
-        robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_IDLE;
-        memset(robot.lcdText, 0, MAX_LCD_TEXT_LENGTH + 1);
-        memset(robot.lcdFormattedText, 0, sizeof(robot.lcdFormattedText));
-        robot.lcdAnimationIndex = 0;
-        robot.lcdCursorX = 0;
-        robot.lcdCursorY = 0;
-        lcd->clear();
-        lcd->setCursor(0, 0);
-    }
-    if (isContinuation && strncmp(text, robot.lcdText, MAX_LCD_TEXT_LENGTH) == 0) {
-        return;
-    }
-    if (millis() - robot.lastJokeDisplayTime < (LCD_JOKE_INTERVAL_MS - 100)) {
-        return;
-    }
-    if (!isContinuation) {
-        strncpy(robot.lcdText, text, MAX_LCD_TEXT_LENGTH);
+    
+    strncpy(robot.lcdText, text, sizeof(robot.lcdText) - 1);
+    robot.lcdText[sizeof(robot.lcdText) - 1] = '\0';
+
+    robot.currentPage = 0;
+    robot.customMessageSetTime = millis();
+    robot.lastLcdPageTime = millis(); // Reset page timer
+
+    int len = strlen(robot.lcdText);
+    if (len > 32) { // 2 lines of 16 chars
+        robot.lcdAnimationState = ANIM_SCROLLING_MESSAGE;
+        robot.lcdMessageTotalPages = (len + 31) / 32;
     } else {
-        strncat(robot.lcdText, text, MAX_LCD_TEXT_LENGTH - strlen(robot.lcdText) - 1);
+        robot.lcdAnimationState = ANIM_IDLE;
     }
-    robot.lcdText[MAX_LCD_TEXT_LENGTH] = '\0';
-    _applyWordWrap(robot.lcdText, robot.lcdFormattedText, sizeof(robot.lcdFormattedText), LCD_LINE_LENGTH);
-    robot.lcdAnimationState = Robot::LcdAnimationState::ANIM_TYPEWRITER;
-    robot.lcdAnimationNextCharTime = millis();
+
+    // Display first page
+    lcd->clear();
+    char pageBuffer[17]; // 16 chars + null
+    strncpy(pageBuffer, robot.lcdText, 16);
+    pageBuffer[16] = '\0';
+    lcd->setCursor(0, 0);
+    lcd->print(pageBuffer);
+
+    if (len > 16) {
+        strncpy(pageBuffer, robot.lcdText + 16, 16);
+        pageBuffer[16] = '\0';
+        lcd->setCursor(0, 1);
+        lcd->print(pageBuffer);
+    }
 }
 
 void handleLcdAnimations(Robot& robot) {
-    unsigned long currentTime = millis();
-    if (robot.lcdAnimationState == Robot::LcdAnimationState::ANIM_IDLE) {
+    if (robot.lcdAnimationState != ANIM_SCROLLING_MESSAGE) {
         return;
     }
-    // ... (rest of the complex animation logic from Nono_full.ino)
+
+    if (millis() - robot.lastLcdPageTime > SCROLL_DELAY_MS) {
+        robot.currentPage++;
+        if (robot.currentPage >= robot.lcdMessageTotalPages) {
+            robot.currentPage = 0; // Loop back
+        }
+
+        int offset = robot.currentPage * 32;
+        size_t textLen = strlen(robot.lcdText);
+        
+        // Skip if offset is beyond the text length
+        if (offset >= textLen) {
+            robot.currentPage = 0;
+            offset = 0;
+            textLen = strlen(robot.lcdText);
+        }
+        
+        lcd->clear();
+        char pageBuffer[17]; // 16 chars + null
+
+        // Line 1
+        size_t remaining = textLen - offset;
+        size_t line1Len = (remaining > 16) ? 16 : remaining;
+        strncpy(pageBuffer, robot.lcdText + offset, line1Len);
+        pageBuffer[line1Len] = '\0';
+        lcd->setCursor(0, 0);
+        lcd->print(pageBuffer);
+
+        // Line 2
+        if (remaining > 16) {
+            remaining -= 16;
+            size_t line2Len = (remaining > 16) ? 16 : remaining;
+            strncpy(pageBuffer, robot.lcdText + offset + 16, line2Len);
+            pageBuffer[line2Len] = '\0';
+            lcd->setCursor(0, 1);
+            lcd->print(pageBuffer);
+        }
+        
+        robot.lastLcdPageTime = millis();
+    }
 }
+
 
 void displayRandomJoke(Robot& robot) {
     char jokeBuffer[MAX_LCD_TEXT_LENGTH + 1];
     getRandomJokeFromSD(robot, "/jokes.txt", jokeBuffer, sizeof(jokeBuffer));
-    setLcdText(robot, jokeBuffer);
+    setLcdText(robot, jokeBuffer, false);
     robot.lastJokeDisplayTime = millis();
 }
 
 void displayJokesIfIdle(Robot& robot) {
     if (robot.currentState != IDLE) return;
-    if (robot.lcdAnimationState != Robot::LcdAnimationState::ANIM_IDLE || (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS)) {
+    if (robot.lcdAnimationState != ANIM_IDLE || (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS)) {
         return;
     }
     unsigned long currentTime = millis();
@@ -204,15 +278,48 @@ void displayJokesIfIdle(Robot& robot) {
 }
 
 void updateLcdDisplay(Robot& robot) {
-    if (robot.lcdAnimationState != Robot::LcdAnimationState::ANIM_IDLE || 
-        (millis() - robot.lastJokeDisplayTime < (LCD_JOKE_INTERVAL_MS)) ||
+    // This function provides a default information screen.
+    // It should not run if another message or animation is active.
+    if (!robot.lcdLogsEnabled) return;
+    if (robot.lcdAnimationState != ANIM_IDLE || 
         (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS)) {
         return;
     }
-    char displayBuffer[MAX_LCD_TEXT_LENGTH + 1] = {0};
-    // Using the same logic from a previous step to have named states
-    snprintf(displayBuffer, sizeof(displayBuffer), "Etat: %s", stateToString(robot.currentState));
-    setLcdText(robot, displayBuffer);
+
+    static unsigned long lastLcdInfoTime = 0;
+    if (millis() - lastLcdInfoTime < 250) { // Update interval: 250ms
+        return;
+    }
+    lastLcdInfoTime = millis();
+    robot.lastLcdUpdateTime = millis(); // Reset the idle joke timer
+
+    char line1[17];
+    char line2[17];
+    
+    snprintf(line1, sizeof(line1), "E:%-8.8s B:%3d", stateToString(robot.currentState), readBatteryPercentage());
+
+    if (robot.lcdInfoMode == LCD_INFO_SIMPLE) {
+        snprintf(line2, sizeof(line2), "V: %3d H: %3d", robot.targetSpeed, (int)robot.cap);
+    } else { // LCD_INFO_SENSORS
+        if (robot.currentState == MANUAL_COMMAND_MODE) {
+            snprintf(line2, sizeof(line2), "V%3d U%3d L%3d", robot.targetSpeed, robot.dusm > 999 ? 999 : robot.dusm, robot.distanceLaser > 999 ? 999 : robot.distanceLaser);
+        } else {
+            snprintf(line2, sizeof(line2), "H%3d U%3d L%3d", (int)robot.cap, robot.dusm > 999 ? 999 : robot.dusm, robot.distanceLaser > 999 ? 999 : robot.distanceLaser);
+        }
+    }
+
+    static char lastLine1[17] = "";
+    static char lastLine2[17] = "";
+    if (strcmp(line1, lastLine1) != 0 || strcmp(line2, lastLine2) != 0) {
+        lcd->clear(); // Clear only when content changes
+        lcd->setCursor(0, 0);
+        lcd->print(line1);
+        strcpy(lastLine1, line1);
+        
+        lcd->setCursor(0, 1);
+        lcd->print(line2);
+        strcpy(lastLine2, line2);
+    }
 }
 
 
@@ -233,6 +340,9 @@ void XboxControllerBluepad::onConnectedController(ControllerPtr ctl) {
             myControllers[i] = ctl;
             lastStates[i] = ControllerState();
             trigger_rumble(50, 0, 150);
+            // Reset manual turret angles on new connection
+            smoothedPanAngle = robot_ptr->servoNeutralTurret;
+            smoothedTiltAngle = robot_ptr->servoNeutralTurret;
             break;
         }
     }
@@ -269,16 +379,20 @@ void XboxControllerBluepad::processControllers() {
         ControllerPtr ctl = myControllers[i];
         if (ctl && ctl->isConnected() && ctl->hasData()) {
             uint32_t currentButtons = ctl->buttons();
+            uint8_t currentDpad = ctl->dpad();
+            uint16_t currentMiscButtons = ctl->miscButtons();
             ControllerState& last = lastStates[i];
 
             #define WAS_MAIN_BUTTON_PRESSED(button) ((currentButtons & button) && !(last.buttons & button))
+            #define WAS_DPAD_PRESSED(button) ((currentDpad & button) && !(last.dpad & button))
+            #define WAS_MISC_BUTTON_PRESSED(button) ((currentMiscButtons & button) && !(last.miscButtons & button))
 
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_MANUAL)) {
                 trigger_rumble(40, 120, 0);
                 if (robot_ptr->currentState == MANUAL_COMMAND_MODE) {
                     changeState(*robot_ptr, IDLE);
                 } else {
-                    if (robot_ptr->vitesseCible == 0) robot_ptr->vitesseCible = VITESSE_MOYENNE;
+                    if (robot_ptr->targetSpeed == 0) robot_ptr->targetSpeed = VITESSE_MOYENNE;
                     changeState(*robot_ptr, MANUAL_COMMAND_MODE);
                 }
             }
@@ -287,30 +401,107 @@ void XboxControllerBluepad::processControllers() {
                 if (robot_ptr->currentState == SMART_AVOIDANCE) changeState(*robot_ptr, IDLE);
                 else changeState(*robot_ptr, SMART_AVOIDANCE);
             }
+            if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_TOGGLE_HEADLIGHT)) {
+                trigger_rumble(40, 120, 0);
+                robot_ptr->headlightOn = !robot_ptr->headlightOn;
+                if (robot_ptr->headlightOn) {
+                    headlightOn();
+                } else {
+                    headlightOff();
+                }
+            }
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_SPEED_UP)) {
                 trigger_rumble(25, 80, 0);
-                robot_ptr->vitesseCible = constrain(robot_ptr->vitesseCible + XBOX_SPEED_INCREMENT, 0, PWM_MAX);
+                robot_ptr->targetSpeed = constrain(robot_ptr->targetSpeed + XBOX_SPEED_INCREMENT, 0, PWM_MAX);
+                LOG_DEBUG("targetSpeed changed to: %d", robot_ptr->targetSpeed);
             }
             if (WAS_MAIN_BUTTON_PRESSED(XBOX_BTN_SPEED_DOWN)) {
                 trigger_rumble(25, 80, 0);
-                robot_ptr->vitesseCible = constrain(robot_ptr->vitesseCible - XBOX_SPEED_INCREMENT, 0, PWM_MAX);
+                robot_ptr->targetSpeed = constrain(robot_ptr->targetSpeed - XBOX_SPEED_INCREMENT, 0, PWM_MAX);
+                LOG_DEBUG("targetSpeed changed to: %d", robot_ptr->targetSpeed);
+            }
+
+            if (WAS_MISC_BUTTON_PRESSED(XBOX_BTN_TOGGLE_LCD_MODE)) {
+                if (robot_ptr->lcdInfoMode == LCD_INFO_SIMPLE) {
+                    robot_ptr->lcdInfoMode = LCD_INFO_SENSORS;
+                } else {
+                    robot_ptr->lcdInfoMode = LCD_INFO_SIMPLE;
+                }
+            }
+
+            if (WAS_DPAD_PRESSED(DPAD_RIGHT)) {
+                displayRandomJoke(*robot_ptr);
+            }
+
+            if (WAS_DPAD_PRESSED(DPAD_UP)) {
+                if (XBOX_DPAD_UP_ACTION == XBOX_ACTION_CALIBRATE_COMPASS) {
+                    LOG_INFO("D-Pad Up pressed: Initiating compass calibration.");
+                    changeState(*robot_ptr, CALIBRATING_COMPASS);
+                }
+            }
+
+            if (WAS_DPAD_PRESSED(DPAD_DOWN)) {
+                if (XBOX_DPAD_DOWN_ACTION == XBOX_ACTION_TOGGLE_MSC) {
+                    toggle_msc_mode();
+                }
             }
 
             if (robot_ptr->currentState == MANUAL_COMMAND_MODE) {
+                // Read all axes and triggers
                 int32_t joyY_left = ctl->axisY();
+                int32_t joyX_left = ctl->axisX();
                 int32_t joyY_right = ctl->axisRY();
-                if (abs(joyY_left) < 150) joyY_left = 0;
-                if (abs(joyY_right) < 150) joyY_right = 0;
-                int max_speed = robot_ptr->vitesseCible;
-                int left_motor_speed = map(joyY_left, -1024, 1023, max_speed, -max_speed);
-                int right_motor_speed = map(joyY_right, -1024, 1023, max_speed, -max_speed);
-                robot_ptr->manualTargetVelocity = (left_motor_speed + right_motor_speed) / 2;
-                robot_ptr->manualTargetTurn = (right_motor_speed - left_motor_speed) / 2; // Corrected turn calculation
+                int32_t joyX_right = ctl->axisRX();
+                int32_t lt_val = ctl->brake();
+                int32_t rt_val = ctl->throttle();
+
+                // --- Turret Control (Right Stick) ---
+                updateTurretManual(ctl);
+
+
+                // --- Movement Control (Left Stick + Triggers) ---
+                if (lt_val > 150 || rt_val > 150) {
+                    // Differential Pivot Turn Mode (Triggers)
+                    Servodirection.write(robot_ptr->servoNeutralDir);
+                    robot_ptr->manualTargetVelocity = 0;
+                    robot_ptr->manualTargetTurn = map(rt_val - lt_val, -1023, 1023, robot_ptr->targetSpeed, -robot_ptr->targetSpeed);
+
+                } else {
+                    // Ackermann Steering Mode (Left Stick)
+                    // Velocity from Left Stick Y
+                    robot_ptr->manualTargetVelocity = map(joyY_left, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, robot_ptr->targetSpeed, -robot_ptr->targetSpeed);
+                    if(abs(joyY_left) < XBOX_JOYSTICK_DEADZONE) robot_ptr->manualTargetVelocity = 0;
+
+                    // Steering angle from Left Stick X
+                    int targetSteeringAngle = map(joyX_left, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, robot_ptr->servoDirMax, robot_ptr->servoDirMin);
+                    targetSteeringAngle = constrain(targetSteeringAngle, robot_ptr->servoDirMin, robot_ptr->servoDirMax);
+                    if(abs(joyX_left) < XBOX_JOYSTICK_DEADZONE) {
+                      Servodirection.write(robot_ptr->servoNeutralDir); // Center steering if joystick is near center
+                      robot_ptr->manualTargetSteeringAngle = robot_ptr->servoNeutralDir;
+                    } else {
+                      Servodirection.write(targetSteeringAngle);
+                      robot_ptr->manualTargetSteeringAngle = targetSteeringAngle;
+                    }
+                    
+                    // In Ackermann mode, manualTargetTurn is not directly used for turning motors,
+                    // but we might need to set it to 0 or use it for speed differential later.
+                    robot_ptr->manualTargetTurn = 0; 
+                }
+
             } else {
+                // If not in manual mode, ensure targets are zero
                 robot_ptr->manualTargetVelocity = 0;
                 robot_ptr->manualTargetTurn = 0;
             }
             last.buttons = currentButtons;
+            last.dpad = currentDpad;
+            last.miscButtons = currentMiscButtons;
         }
     }
+}
+
+// --- New function for toggling MSC ---
+void toggle_msc_mode() {
+    LOG_INFO("Toggle MSC mode requested via controller.");
+    robot.requestMscToggle = true;
 }

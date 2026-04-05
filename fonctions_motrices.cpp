@@ -1,38 +1,58 @@
 #include "fonctions_motrices.h"
-#include "hardware.h"
-#include "comms.h"
+#include "robot.h"
 #include "logger.h"
+#include "comms.h"
+#include <cmath>
 
-// --- Private Function Prototypes ---
-float calculateHeadingError(float target, float current);
-bool isObstacleDetected(Robot& robot);
-int applySpeedRamp(Robot& robot, float target, float current);
-void handleEmergencyEvasionState(Robot& robot, int& pwmA, int& pwmB);
-void handleStuckState(Robot& robot, int& pwmA, int& pwmB);
-void handleHeadAnimation(Robot& robot, bool changeStateOnFinish);
-void handleMovingForwardState(Robot& robot, int& targetA, int& targetB);
-void handleFollowHeadingState(Robot& robot, int& targetA, int& targetB);
-void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB);
-void handleSentryModeState(Robot& robot);
-void handleCheckingGroundState(Robot& robot, int& pwmA, int& pwmB);
-void handleAnimatingHeadState(Robot& robot);
-void applyTractionControl(int& pwmA, int& pwmB, Robot& robot);
+// Forward declaration
+void calculateManualPwm(Robot& robot, int& outPwmA, int& outPwmB);
 
 // --- Function Implementations ---
+const char* stateToString(RobotState state) {
+  switch (state) {
+    case IDLE: return "IDLE";
+    case MOVING_FORWARD: return "MOVING_FORWARD";
+    case MOVING_BACKWARD: return "MOVING_BACKWARD";
+    case TURNING_LEFT: return "TURNING_LEFT";
+    case TURNING_RIGHT: return "TURNING_RIGHT";
+    case MANUAL_FORWARD: return "MANUAL_FORWARD";
+    case MANUAL_BACKWARD: return "MANUAL_BACKWARD";
+    case MANUAL_TURNING_LEFT: return "MANUAL_TURNING_LEFT";
+    case MANUAL_TURNING_RIGHT: return "MANUAL_TURNING_RIGHT";
+    case OBSTACLE_AVOIDANCE: return "OBSTACLE_AVOIDANCE";
+    case WAITING_FOR_TURRET: return "WAITING_FOR_TURRET";
+    case FOLLOW_HEADING: return "FOLLOW_HEADING";
+    case MAINTAIN_HEADING: return "MAINTAIN_HEADING";
+    case BACKING_UP_OBSTACLE: return "BACKING_UP_OBSTACLE";
+    case SCANNING_FOR_PATH: return "SCANNING_FOR_PATH";
+    case TURNING_TO_PATH: return "TURNING_TO_PATH";
+    case SMART_TURNING: return "SMART_TURNING";
+    case CALIBRATING_COMPASS: return "CALIBRATING_COMPASS";
+    case SMART_AVOIDANCE: return "SMART_AVOIDANCE";
+    case SENTRY_MODE: return "SENTRY_MODE";
+    case CHECKING_GROUND: return "CHECKING_GROUND";
+    case CLIFF_DETECTED: return "CLIFF_DETECTED";
+    case ANIMATING_HEAD: return "ANIMATING_HEAD";
+    case GAMEPAD_CONTROL: return "GAMEPAD_CONTROL";
+    case MANUAL_COMMAND_MODE: return "MANUAL_COMMAND_MODE";
+    case EMERGENCY_EVASION: return "EMERGENCY_EVASION";
+    case STUCK: return "STUCK";
+    default: return "UNKNOWN_STATE";
+  }
+}
 
 void changeState(Robot& robot, RobotState newState, ObstacleAvoidanceState avoidState) {
   if (robot.currentState == newState && newState != OBSTACLE_AVOIDANCE) return;
+  
+  trigger_rumble(75, 0, 255); // MAX haptic feedback for state change
 
   // --- Servo Power Management ---
   if (newState == IDLE) {
     LOG_DEBUG("Detaching servos for IDLE state.");
     tourelle.detach();
-    Servodirection.detach();
   } else if (robot.currentState == IDLE) {
     LOG_DEBUG("Re-attaching servos and setting to neutral.");
     tourelle.attach();
-    Servodirection.attach(PINDIRECTION);
-    Servodirection.write(robot.servoNeutralDir);
     tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
   }
   
@@ -53,7 +73,7 @@ void changeState(Robot& robot, RobotState newState, ObstacleAvoidanceState avoid
     robot.obstacleAvoidanceState = AVOID_INIT;
   } else {
     robot.consecutiveAvoidManeuvers = 0;
-    robot.obstacleAvoidanceState = AVOID_IDLE;
+    robot.obstacleAvoidanceState = avoidState;
   }
 
   LOG_INFO("State -> %s", stateToString(newState));
@@ -84,8 +104,8 @@ void handleMovingForwardState(Robot& robot, int& targetA, int& targetB) {
       return;
   }
   // Simplified: other checks like stall/cliff are omitted for clarity
-  targetA = robot.speedAvg;
-  targetB = robot.speedAvg;
+  targetA = robot.targetSpeed;
+  targetB = robot.targetSpeed;
 }
 
 void handleFollowHeadingState(Robot& robot, int& targetA, int& targetB) {
@@ -94,12 +114,17 @@ void handleFollowHeadingState(Robot& robot, int& targetA, int& targetB) {
       return;
   }
   // Simplified
-  float error = calculateHeadingError(robot.capCibleRotation, getCalibratedHeading(robot));
+  float currentHeading = getCalibratedHeading(robot);
+  if (std::isnan(currentHeading)) {
+      // Compass not initialized, use last known heading
+      currentHeading = robot.cap;
+  }
+  float error = calculateHeadingError(robot.capCibleRotation, currentHeading);
   if (abs(error) < robot.turnTolerance) {
       changeState(robot, MOVING_FORWARD);
       return;
   }
-  int pivotSpeed = robot.speedRotation;
+  int pivotSpeed = robot.targetSpeed;
   if (error > 0) { targetA = -pivotSpeed; targetB = pivotSpeed; }
   else { targetA = pivotSpeed; targetB = -pivotSpeed; }
 }
@@ -108,6 +133,7 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
   targetA = 0; // Default to stopping
   targetB = 0;
   const int QUICK_SCAN_ANGLE = 45; // 45 degrees left/right of center
+  const uint32_t LASER_DATA_TIMEOUT_MS = 500; // Timeout for waiting for laser data
 
   switch (robot.obstacleAvoidanceState) {
     case AVOID_INIT:
@@ -123,11 +149,20 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
+      // Check if turret has moved and data is ready, or if we've timed out waiting
       if (millis() - robot.lastActionTime > robot.turretMoveTime) {
-        robot.quickScanLeftDist = vl53->readRangeContinuousMillimeters() / 10;
-        LOG_DEBUG("AVOID: Quick scan LEFT distance: %d cm", robot.quickScanLeftDist);
-        robot.actionStarted = false;
-        robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_RIGHT;
+        if (robot.laserInitialized && vl53->dataReady()) {
+          robot.quickScanLeftDist = vl53->readRangeContinuousMillimeters() / 10;
+          LOG_DEBUG("AVOID: Quick scan LEFT distance: %d cm", robot.quickScanLeftDist);
+          robot.actionStarted = false;
+          robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_RIGHT;
+        } else if (millis() - robot.lastActionTime > robot.turretMoveTime + LASER_DATA_TIMEOUT_MS) {
+          // Timeout waiting for laser data
+          LOG_WARN("AVOID: Timeout waiting for LEFT laser data");
+          robot.quickScanLeftDist = robot.maxUltrasonicDistance; // Safe fallback
+          robot.actionStarted = false;
+          robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_RIGHT;
+        }
       }
       break;
 
@@ -137,22 +172,37 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
+      // Check if turret has moved and data is ready, or if we've timed out waiting
       if (millis() - robot.lastActionTime > robot.turretMoveTime) {
-        robot.quickScanRightDist = vl53->readRangeContinuousMillimeters() / 10;
-        LOG_DEBUG("AVOID: Quick scan RIGHT distance: %d cm", robot.quickScanRightDist);
-        robot.actionStarted = false;
-        robot.obstacleAvoidanceState = AVOID_EVALUATE_QUICK_SCANS;
+        if (robot.laserInitialized && vl53->dataReady()) {
+          robot.quickScanRightDist = vl53->readRangeContinuousMillimeters() / 10;
+          LOG_DEBUG("AVOID: Quick scan RIGHT distance: %d cm", robot.quickScanRightDist);
+          robot.actionStarted = false;
+          robot.obstacleAvoidanceState = AVOID_EVALUATE_QUICK_SCANS;
+        } else if (millis() - robot.lastActionTime > robot.turretMoveTime + LASER_DATA_TIMEOUT_MS) {
+          // Timeout waiting for laser data
+          LOG_WARN("AVOID: Timeout waiting for RIGHT laser data");
+          robot.quickScanRightDist = robot.maxUltrasonicDistance; // Safe fallback
+          robot.actionStarted = false;
+          robot.obstacleAvoidanceState = AVOID_EVALUATE_QUICK_SCANS;
+        }
       }
       break;
 
     case AVOID_EVALUATE_QUICK_SCANS:
       if (robot.quickScanLeftDist > robot.minDistForValidPath) {
         LOG_DEBUG("AVOID: Quick escape available to the LEFT.");
-        robot.capCibleRotation = getCalibratedHeading(robot) - 60; // Turn more than 45 to be safe
+        float currentHeading = getCalibratedHeading(robot);
+        if (!std::isnan(currentHeading)) {
+          robot.capCibleRotation = currentHeading - 60; // Turn more than 45 to be safe
+        }
         robot.obstacleAvoidanceState = AVOID_TURN_TO_PATH;
       } else if (robot.quickScanRightDist > robot.minDistForValidPath) {
         LOG_DEBUG("AVOID: Quick escape available to the RIGHT.");
-        robot.capCibleRotation = getCalibratedHeading(robot) + 60;
+        float currentHeading = getCalibratedHeading(robot);
+        if (!std::isnan(currentHeading)) {
+          robot.capCibleRotation = currentHeading + 60;
+        }
         robot.obstacleAvoidanceState = AVOID_TURN_TO_PATH;
       } else {
         LOG_DEBUG("AVOID: No quick escape. Performing full scan.");
@@ -170,7 +220,10 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
       if (robot.bestAvoidAngle != -1) {
         LOG_DEBUG("AVOID: Widest path found at angle %d.", robot.bestAvoidAngle);
         float angleOffset = robot.bestAvoidAngle - 90.0;
-        robot.capCibleRotation = getCalibratedHeading(robot) + angleOffset;
+        float currentHeading = getCalibratedHeading(robot);
+        if (!std::isnan(currentHeading)) {
+          robot.capCibleRotation = currentHeading + angleOffset;
+        }
         robot.obstacleAvoidanceState = AVOID_TURN_TO_PATH;
       } else {
         LOG_DEBUG("AVOID: No valid path found. Retreating.");
@@ -225,7 +278,6 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
   }
 }
 
-// All calls to the old avoidance now go to the new one
 void handleObstacleAvoidanceState(Robot& robot, int& targetA, int& targetB) {
     handleSmartAvoidanceState(robot, targetA, targetB);
 }
@@ -240,8 +292,26 @@ void updateMotorControl(Robot& robot) {
     case IDLE: targetA = 0; targetB = 0; break;
     case MOVING_FORWARD: handleMovingForwardState(robot, targetA, targetB); break;
     case FOLLOW_HEADING: handleFollowHeadingState(robot, targetA, targetB); break;
-    case MOVING_BACKWARD: targetA = -robot.vitesseCible; targetB = -robot.vitesseCible; break;
-    case MANUAL_COMMAND_MODE: calculateManualPwm(robot, targetA, targetB); break;
+    case MOVING_BACKWARD: targetA = -robot.targetSpeed; targetB = -robot.targetSpeed; break;
+    case MANUAL_COMMAND_MODE:
+        // Safety override for manual movement in Ackermann steering
+        if (bumperPressed || (robot.dusm < 5 && robot.dusm > 0)) {
+            targetA = 0; // Prevent all motion
+            targetB = 0; // Prevent all motion
+            Servodirection.write(robot.servoNeutralDir); // Center steering
+            trigger_rumble(40, 200, 0); // Stronger haptic notification for safety override
+        } else {
+            // If Ackermann steering is enabled, but only a pivot turn is commanded (velocity is 0)
+            // then use calculateManualPwm for differential pivot turn.
+            if (robot.manualTargetVelocity == 0 && robot.manualTargetTurn != 0) {
+                calculateManualPwm(robot, targetA, targetB);
+            } else {
+                // Otherwise, proceed with Ackermann steering (velocity from left joystick Y-axis).
+                targetA = robot.manualTargetVelocity;
+                targetB = robot.manualTargetVelocity;
+            }
+        }
+        break;
     case OBSTACLE_AVOIDANCE: 
     case SMART_AVOIDANCE: 
       handleSmartAvoidanceState(robot, targetA, targetB); 
@@ -270,11 +340,19 @@ void updateMotorControl(Robot& robot) {
 void calculateManualPwm(Robot& robot, int& outPwmA, int& outPwmB) {
     int velocity = robot.manualTargetVelocity;
     int turn = robot.manualTargetTurn;
+
+    // Safety override for manual movement
+    if (bumperPressed || (robot.dusm < 5 && robot.dusm > 0)) {
+        velocity = 0; // Prevent all motion
+        turn = 0;     // Stop turning
+        Servodirection.write(robot.servoNeutralDir); // Center steering
+        trigger_rumble(40, 200, 0); // Stronger haptic notification for safety override
+    }
+
     outPwmA = constrain(velocity - turn, -PWM_MAX, PWM_MAX);
     outPwmB = constrain(velocity + turn, -PWM_MAX, PWM_MAX);
 }
 
-// ... other function stubs for brevity
 float easeOutInSine(float t) { return 0.5 * (1 + sin(PI * (t - 0.5))); }
 void handleEmergencyEvasionState(Robot& robot, int& pwmA, int& pwmB) {}
 void handleStuckState(Robot& robot, int& pwmA, int& pwmB) {}

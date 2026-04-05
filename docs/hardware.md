@@ -30,7 +30,6 @@ Ce document liste les composants électroniques et leur câblage pour la carte d
 | **Servomoteurs (x3)** | SG90 ou équivalent | Contrôlent les mouvements Pan/Tilt de la tourelle et la direction (Ackermann, optionnel). |
 | **LEDs RGB** | Adafruit NeoPixel (x4) | Bande de LEDs pour le retour visuel. |
 | **Phare** | LED haute luminosité | Éclairage avant. |
-| **Buzzer** | Buzzer passif | Émission de sons et de musique. |
 | **Écran LCD** | LCD I2C 16x2 | I2C | Affiche l'état, la télémétrie et les menus. |
 | **Lecteur de carte** | MicroSD Card Reader | SPI | Stockage de fichiers (configuration, blagues, etc.). |
 
@@ -57,7 +56,6 @@ Ce tableau est basé sur les constantes définies dans `src/config.h`.
 | **14** | Capteur PIR | Signal de sortie |
 | **21** | Bouton Interruption | INTERUPTPIN (Bumper) |
 | **48** | LEDs NeoPixel | NEOPIXEL_PIN |
-| **42** | Buzzer | BUZZER_PIN |
 | **45** | Phare | PIN_PHARE |
 | **41** | Carte SD | CS (Chip Select) |
 | **39** | Carte SD | SCK (Serial Clock) |

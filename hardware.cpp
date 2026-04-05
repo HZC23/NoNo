@@ -1,7 +1,12 @@
 #include "config.h"
 #include "hardware.h"
+#include "robot.h"
+#include "battery_utils.h"
 #include "comms.h" // For setLcdText
 #include "logger.h" // Include the new logger
+#include <EEPROM.h>
+#include <SPI.h>
+
 
 // --- HARDWARE OBJECTS DEFINITIONS ---
 MX1508 motorA(AIN1, AIN2);
@@ -139,11 +144,14 @@ void scanDistances(Robot& robot) {
         delay(robot.turretScanDelay > 0 ? robot.turretScanDelay : 30); // Use a default delay if not set
 
         int distLaser = robot.maxUltrasonicDistance; // Default to max distance
-        if (robot.laserInitialized) {
+        if (robot.laserInitialized && vl53->dataReady()) {
             distLaser = vl53->readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
             if (vl53->timeoutOccurred() || distLaser <= 0) {
                 distLaser = robot.maxUltrasonicDistance;
             }
+        } else if (robot.laserInitialized) {
+            // Data not ready, use safe default instead of potentially uninitialized value
+            distLaser = robot.maxUltrasonicDistance;
         }
         robot.scanDistances[angle] = distLaser;
     }
@@ -209,4 +217,67 @@ int findWidestPath(Robot& robot) {
 
     LOG_DEBUG("findWidestPath: No valid path found.");
     return -1;
+}
+
+// Function to clear a stuck I2C bus.
+// To be called before Wire.begin()
+void clearI2CBus() {
+  pinMode(SDA_PIN, INPUT_PULLUP);
+  pinMode(SCL_PIN, INPUT_PULLUP);
+  delay(10); // Allow pins to settle
+
+  if (digitalRead(SDA_PIN) == 1 && digitalRead(SCL_PIN) == 1) {
+    LOG_DEBUG("I2C bus is clear.");
+    return;
+  }
+
+  LOG_INFO("I2C bus is stuck. Attempting to clear...");
+
+  pinMode(SCL_PIN, OUTPUT);
+  for (int i = 0; i < 16 && digitalRead(SDA_PIN) == 0; i++) {
+    digitalWrite(SCL_PIN, LOW);
+    delayMicroseconds(10);
+    digitalWrite(SCL_PIN, HIGH);
+    delayMicroseconds(10);
+  }
+
+  pinMode(SDA_PIN, INPUT_PULLUP); // Set SDA back to input
+  pinMode(SCL_PIN, INPUT_PULLUP); // Set SCL back to input
+
+  if (digitalRead(SDA_PIN) == 0) {
+    LOG_ERROR("Failed to clear I2C bus. Check hardware.");
+  } else {
+    LOG_INFO("I2C bus unstuck successfully.");
+  }
+}
+
+// Function to scan the I2C bus for connected devices
+void scanI2CBus() {
+  LOG_INFO("Scanning I2C bus...");
+  byte error, address;
+  int nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      LOG_INFO("I2C device found at address 0x%x", address);
+      nDevices++;
+    } else if (error == 4) {
+      LOG_WARN("Unknown error at address 0x%x", address);
+    }    
+  }
+  if (nDevices == 0) {
+    LOG_WARN("No I2C devices found.");
+  } else {
+    LOG_INFO("Done I2C scanning, found %d devices.", nDevices);
+  }
+}
+
+// Headlight control
+void headlightOn() {
+  digitalWrite(PIN_PHARE, HIGH);
+}
+
+void headlightOff() {
+  digitalWrite(PIN_PHARE, LOW);
 }

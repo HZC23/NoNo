@@ -160,7 +160,7 @@
 #define LCD_LINE_LENGTH 16
 #define JSON_DOC_SIZE 200
 #define CMD_BUFFER_SIZE 64
-#define MAX_LCD_TEXT_LENGTH 64
+#define MAX_LCD_TEXT_LENGTH 256
 #define SCROLL_DELAY_MS     2500 // The display time of each page (in ms)
 #define LCD_IDLE_TIMEOUT_MS 10000 // 5 seconds of inactivity before jokes start
 #define LCD_JOKE_INTERVAL_MS 5000 // Change joke every 5 seconds if still idle
@@ -206,8 +206,7 @@
 #define NVS_MAGIC_VALUE 12345
 
 
-// === USB Mass Storage ===
-#define USB_MSC_ENABLED false // Set to true to enable USB Mass Storage functionality
+
 
 
 // === RTOS & TASK CONSTANTS ===
@@ -244,15 +243,17 @@
 #define XBOX_BTN_SPEED_UP             BUTTON_SHOULDER_R
 #define XBOX_BTN_SPEED_DOWN           BUTTON_SHOULDER_L
 #define XBOX_BTN_EMERGENCY_STOP       MISC_BUTTON_BACK
+#define XBOX_BTN_TOGGLE_LCD_MODE      MISC_BUTTON_HOME
 
 // --- XBOX CONTROLLER D-PAD MAPPINGS ---
 // Define the actions available for the D-Pad
 #define XBOX_ACTION_NONE                0
 #define XBOX_ACTION_CALIBRATE_COMPASS   1
+#define XBOX_ACTION_TOGGLE_MSC          2
 
 // Assign an action to each D-Pad button
 #define XBOX_DPAD_UP_ACTION     XBOX_ACTION_CALIBRATE_COMPASS
-#define XBOX_DPAD_DOWN_ACTION   XBOX_ACTION_NONE
+#define XBOX_DPAD_DOWN_ACTION   XBOX_ACTION_TOGGLE_MSC
 #define XBOX_DPAD_LEFT_ACTION   XBOX_ACTION_NONE
 #define XBOX_DPAD_RIGHT_ACTION  XBOX_ACTION_NONE
 

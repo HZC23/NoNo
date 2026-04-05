@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <SD.h>
+#include <SdFat.h>
 #include <FS_MX1508.h>
 #include <Esp32Servo.h>
 #include <LSM303.h>
@@ -12,7 +12,9 @@
 #include <DFRobot_RGBLCD1602.h>
 #include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
-#include "robot.h" // Includes Robot struct and config.h
+
+// Forward Declaration
+struct Robot;
 
 // --- Tourelle Class Definition ---
 class Tourelle {
@@ -44,6 +46,7 @@ void IRAM_ATTR onBumperPress();
 extern volatile unsigned long echo_start_time;
 extern volatile unsigned long echo_end_time;
 extern volatile bool echo_received;
+extern volatile bool is_measuring;
 void IRAM_ATTR onEcho();
 
 
@@ -57,56 +60,55 @@ extern DFRobot_RGBLCD1602 *lcd;
 extern VL53L1X *vl53;
 extern Adafruit_NeoPixel pixels;
 extern Preferences preferences;
+extern SdFat sd;
 
 
 // --- HARDWARE-RELATED FUNCTION PROTOTYPES ---
 
 // General
+void clearI2CBus();
+void scanI2CBus();
 void Arret();
 void updateBatteryStatus(Robot& robot);
+void scanDistances(Robot& robot); // Added
+int findClearestPath(Robot& robot); // Added
+int findWidestPath(Robot& robot); // Added
 
-// Compass (from compass.h)
-void compass_init(Robot& robot);
-float getCalibratedHeading(Robot& robot);
-void calibrateCompass(Robot& robot);
+// Compass
+bool isNVSDataValid();
 void saveCompassCalibration(const Robot& robot);
 void loadCompassCalibration(Robot& robot);
-bool isCompassCalibrationValid();
+void compass_init(Robot& robot);
 float calculateHeading(float y, float x);
 float calculateHeading(const LSM303& compass);
+float getCalibratedHeading(Robot& robot);
+void calibrateCompass(Robot& robot);
 float getPitch(Robot& robot);
-void displayCompassInfo(Robot& robot);
 bool detectImpactOrStall(Robot& robot);
-void Mcap(Robot& robot, int n);
 
-
-// LED FX (from led_fx.h)
+// LED FX
 void led_fx_init();
 void led_fx_update(const Robot& robot);
 void led_fx_set_all(uint8_t r, uint8_t g, uint8_t b);
 void led_fx_off();
 
-// SD Utils (from sd_utils.h)
+// SD Utils
 bool setupSDCard();
 void getRandomJokeFromSD(Robot& robot, const char* filename, char* buffer, size_t bufferSize);
 bool loadConfig(Robot& robot);
+SdFat* get_sd_card();
 
-// Sensor Task (from sensor_task.h)
+// Sensor Task
 void sensor_init();
 void sensor_update_task(Robot& robot);
 
-// Support (from support.h)
-void PhareAllume();
-void PhareEteint();
-float readBatteryVoltage();
-int readBatteryPercentage();
+// Headlight Control
+void headlightOn();
+void headlightOff();
 
-// Turret Control (from turret_control.h)
+// Turret Control
 void updateTurret(Robot& robot, bool isMovingForward);
 void syncTurretWithSteering(int steeringAngle);
-int findClearestPath(Robot& robot);
-int findWidestPath(Robot& robot); // New advanced pathfinding
-void scanDistances(Robot& robot); // Helper for pathfinding
 int setAckermannAngle(Robot& robot, int angleError, int speed);
 
 

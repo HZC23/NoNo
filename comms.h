@@ -1,27 +1,27 @@
 #ifndef COMMS_H
 #define COMMS_H
 
-#include "robot.h"
 #include <Bluepad32.h>
 #include "fonctions_motrices.h"
 
 // Forward declarations to solve circular dependency
 class MX1508;
 class Tourelle;
+struct Robot;
+
 
 
 // --- Function Prototypes ---
 
-// Terminal (from terminal.h)
+// Terminal
 void checkSerial();
 void processCommand(String command);
 
-// Telemetry (from telemetry.h)
+// Telemetry
 void sendTelemetry(Robot& robot);
 void sendPeriodicData(Robot& robot);
-const char* stateToString(RobotState state);
 
-// Display (from display.h)
+// Display
 void setLcdText(Robot& robot, const char* text, bool isContinuation = false);
 void handleLcdAnimations(Robot& robot);
 void displayRandomJoke(Robot& robot);
@@ -30,6 +30,7 @@ void updateLcdDisplay(Robot& robot);
 
 // Haptics
 void trigger_rumble(uint8_t duration, uint8_t weak_magnitude, uint8_t strong_magnitude);
+void toggle_msc_mode();
 
 // --- Xbox Controller Class ---
 class XboxControllerBluepad {
