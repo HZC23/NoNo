@@ -28,7 +28,7 @@ loop() {
 
 ## 2. La State Machine - Cœur Logique (2 min)
 
-### Où? [src/fonctions_motrices.cpp](../fonctions_motrices.cpp) - fonction `updateMotorControl()`
+### Où? [src/fonctions_motrices.cpp](../../fonctions_motrices.cpp) - fonction `updateMotorControl()`
 
 ### Comment?
 ```cpp
@@ -77,15 +77,15 @@ switch (robot.currentState) {
 
 | Fichier | Rôle | À savoir |
 |---------|------|----------|
-| [src/NoNo.ino](../NoNo.ino) | Orchestration | `setup()` init, `loop()` scheduler |
-| [src/robot.h](../robot.h) | État global | Struct `Robot` = tout ce qu'on a besoin de savoir |
-| [src/config.h](../config.h) | **Source unique des constantes** | 200+ pins/speeds/angles/seuils |
-| [src/fonctions_motrices.cpp](../fonctions_motrices.cpp) | **State machine core** | `updateMotorControl()` = cerveau |
-| [src/hardware.h](../hardware.h), [src/hardware.cpp](../hardware.cpp) | Moteurs/capteurs | Abstraction matérielle |
-| [src/comms.cpp](../comms.cpp) | Serial/LCD/Xbox | Interfaces utilisateur |
-| [src/compass.cpp](../compass.cpp) | Magnétomètre | `getCalibratedHeading()` |
-| [src/sensor_task.cpp](../sensor_task.cpp) | Ultrasons/Laser | Non-bloquant ISR |
-| [src/comms.cpp](../comms.cpp) | Serial/LCD/Xbox | Interfaces utilisateur |
+| [src/NoNo.ino](../../NoNo.ino) | Orchestration | `setup()` init, `loop()` scheduler |
+| [src/robot.h](../../robot.h) | État global | Struct `Robot` = tout ce qu'on a besoin de savoir |
+| [src/config.h](../../config.h) | **Source unique des constantes** | 200+ pins/speeds/angles/seuils |
+| [src/fonctions_motrices.cpp](../../fonctions_motrices.cpp) | **State machine core** | `updateMotorControl()` = cerveau |
+| [src/hardware.h](../../hardware.h), [src/hardware.cpp](../../hardware.cpp) | Moteurs/capteurs | Abstraction matérielle |
+| [src/comms.cpp](../../comms.cpp) | Serial/LCD/Xbox | Interfaces utilisateur |
+| [src/compass.cpp](../../compass.cpp) | Magnétomètre | `getCalibratedHeading()` |
+| [src/sensor_task.cpp](../../sensor_task.cpp) | Ultrasons/Laser | Non-bloquant ISR |
+| [src/comms.cpp](../../comms.cpp) | Serial/LCD/Xbox | Interfaces utilisateur |
 
 ---
 
@@ -156,24 +156,24 @@ if(xSemaphoreTake(robotMutex, MUTEX_WAIT_TICKS) == pdTRUE) {
 ## 6. Pour Déboguer : Étapes de Base
 
 ### J'ajoute une nouvelle lumière LED
-1. **Add new state** : Add `SCANNING_NEW_MODE` to `enum RobotState` in [config.h](../config.h)
-2. **State logic** : Add case dans [fonctions_motrices.cpp](../fonctions_motrices.cpp) `updateMotorControl()`
-3. **LED effect** : Add case dans [led_fx.cpp](../led_fx.cpp) `led_fx_update()`
-4. **Test** : Trigger state via Serial command ou automatiquement
-5. **Compile** : `pio run` depuis terminal
+1. **Ajouter un nouvel état** : Ajouter `SCANNING_NEW_MODE` à `enum RobotState` in [config.h](../../config.h)
+2. **Logique d'état** : Ajouter case dans [fonctions_motrices.cpp](../../fonctions_motrices.cpp) `updateMotorControl()`
+3. **Effet LED** : Ajouter case dans [led_fx.cpp](../../led_fx.cpp) `led_fx_update()`
+4. **Test** : Déclencher l'état via commande série ou automatiquement
+5. **Compiler** : `pio run` depuis le terminal
 
 ### Mon capteur ne marche pas
-1. **Check pins** : Vérifier [config.h](../config.h) pin assignment vs datasheet
+1. **Check pins** : Vérifier [config.h](../../config.h) pin assignment vs datasheet
 2. **Check init** : Exception lors `hardware_init()`? Check Serial logs
-3. **Check read** : Non-bloquant? data timeout? Voir [sensor_task.cpp](../sensor_task.cpp)
+3. **Check read** : Non-bloquant? data timeout? Voir [sensor_task.cpp](../../sensor_task.cpp)
 4. **Check robot struct** : Donnée apparaît dans JSON telemetry?
 5. **Check logic** : État change basé sur nouvelle donnée?
 
 ### Mes moteurs vont dans la mauvaise direction
-- Check direction pins dans [hardware.cpp](../hardware.cpp) - peut inverser logique
+- Check direction pins dans [hardware.cpp](../../hardware.cpp) - peut inverser logique
 
 ### Vitesse trop lente/rapide
-- Edit `VITESSE_MOYENNE` etc dans [config.h](../config.h)
+- Edit `VITESSE_MOYENNE` etc dans [config.h](../../config.h)
 
 ---
 
@@ -181,11 +181,11 @@ if(xSemaphoreTake(robotMutex, MUTEX_WAIT_TICKS) == pdTRUE) {
 
 | Question | Fichier |
 |----------|---------|
-| Comment fonctionne l'obstacle avoidance? | [fonctions_motrices.cpp](../fonctions_motrices.cpp) - état `OBSTACLE_AVOIDANCE` case |
-| Comment fonctionne le cap magnétique? | [compass.cpp](../compass.cpp) - `getCalibratedHeading()` |
-| Comment la manette Xbox marche? | [comms.cpp](../comms.cpp) - `processControllers()` + Bluepad32 lib |
-| Où sont les constantes? | [config.h](../config.h) - all 200+ defines |
-| Qu'est-ce que chaque pin fait? | [config.h](../config.h) (defines) + [hardware.md](hardware.md) (tableau) |
+| Comment fonctionne l'obstacle avoidance? | [fonctions_motrices.cpp](../../fonctions_motrices.cpp) - état `OBSTACLE_AVOIDANCE` case |
+| Comment fonctionne le cap magnétique? | [compass.cpp](../../compass.cpp) - `getCalibratedHeading()` |
+| Comment la manette Xbox marche? | [comms.cpp](../../comms.cpp) - `processControllers()` + Bluepad32 lib |
+| Où sont les constantes? | [config.h](../../config.h) - all 200+ defines |
+| Qu'est-ce que chaque pin fait? | [config.h](../../config.h) (defines) + [hardware.md](hardware.md) (tableau) |
 
 ---
 

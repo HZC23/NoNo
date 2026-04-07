@@ -189,16 +189,11 @@ struct Robot {
 
     bool sdCardReady = false;
 
-
-
     // Outputs
-
     bool headlightOn = false;
-
-
+    bool motorPowerOn = true; // State of the motor power switch
 
     // Sensors
-
     int dusm = 0; // Distance UltraSon Mesuree
 
     int distanceLaser = 0;
@@ -351,6 +346,9 @@ struct Robot {
 
 // --- Global Robot Instance ---
 extern Robot robot;
+
+// --- Function to initialize robot default values ---
+void initializeRobot(Robot& robot);
 
 
 #endif // ROBOT_H

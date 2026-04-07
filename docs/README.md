@@ -1,53 +1,32 @@
-# NoNo Robot Project
+# Documentation du Robot NoNo
 
-This repository contains the source code for the "NoNo" robot's Arduino firmware, built using the PlatformIO IDE.
+Bienvenue dans la documentation technique du firmware NoNo (ESP32-S3). Ce dossier contient toutes les informations nécessaires pour comprendre, configurer, contrôler et étendre les capacités du robot.
 
-NoNo is a differential-drive mobile robot based on the ESP32-S3, designed for autonomous navigation and remote control.
+## 🚀 Guides de démarrage
+- **[DEVELOPER_GUIDE.md](./getting_started/DEVELOPER_GUIDE.md) :** Comprendre le flux du code et la machine à états en 5 minutes.
+- **[App Guide](./getting_started/app_guide.md) :** Guide de connexion série et protocole de communication (Anglais).
 
-## Documentation
+## 🏗️ Architecture et Technique
+- **[Architecture](./technical/ARCHITECTURE.md) :** Vue d'ensemble de l'architecture logicielle, mapping composants/code et flux de données.
+- **[Hardware](./technical/hardware.md) :** Liste des composants électroniques, branchements et pinout de l'ESP32-S3.
+- **[Système de LEDs](./technical/leds.md) :** Détails des effets visuels NeoPixel selon l'état du robot.
+- **[FreeRTOS Optimization](./technical/FREERTOS_OPTIMIZATION_GUIDE.md) :** Guide sur l'architecture multi-tâches et l'utilisation des mutex.
 
-- **[Software](./software.md):** A detailed description of the software architecture, state machine, and main libraries.
-- **[Hardware](./hardware.md):** A list of the electronic components and their wiring.
-- **[Communication](./communication.md):** The serial communication protocol.
-- **[Commands](./commands.md):** An exhaustive list of serial commands to control the robot.
-- **[Calibration](./calibration.md):** Detailed instructions for calibrating the magnetometer.
-- **[App Guide](./app_guide.md):** A guide for connecting to and controlling the robot via a serial terminal or application.
-- **[Controller Guide](./controller_guide.md):** A guide for controlling the robot using an Xbox wireless controller.
+## 🎮 Contrôle et Communication
+- **[Commandes Série](./control/commands.md) :** Référence complète des commandes `KEY:VALUE` (Français).
+- **[Controller Guide](./control/controller_guide.md) :** Guide de configuration et d'utilisation d'une manette Xbox sans fil.
 
-## Main Features
+## 🛠️ Maintenance et Évolution
+- **[Calibration](./maintenance/calibration.md) :** Procédure détaillée pour calibrer le magnétomètre (boussole).
+- **[New Component Checklist](./maintenance/NEW_COMPONENT_CHECKLIST.md) :** Guide étape par étape pour ajouter un nouveau capteur ou actionneur.
+- **[Changelog](./maintenance/CHANGELOG.md) :** Historique des modifications notables du firmware.
 
-- **Non-blocking architecture:** The firmware is based on a state machine for reactive behavior.
-- **Multiple navigation modes:** Manual control, heading tracking (GOTO), and autonomous obstacle avoidance.
-- **Sensors:**
-    - Magnetometer/Accelerometer (LSM303) for orientation.
-    - Ultrasonic distance sensor for obstacle avoidance.
-    - Time-of-Flight laser distance sensor (VL53L1X) for precise measurements.
-- **Actuators:**
-    - Two DC motors with an MX1508 driver for propulsion.
-    - A pan/tilt turret with two servos.
-- **User Interface:**
-    - I2C LCD screen to display status and sensor data.
-    - Serial communication via USB for control and telemetry.
+---
 
-## Development
+## Fonctionnalités Principales
 
-### Prerequisites
-
-- [Visual Studio Code](https://code.visualstudio.com/)
-- [PlatformIO IDE extension](https://platformio.org/install/ide?install=vscode) for VSCode.
-
-### Compilation and Uploading
-
-This project is configured to be built with PlatformIO.
-
-1.  Open the project folder in Visual Studio Code.
-2.  The PlatformIO extension should recognize the `platformio.ini` file.
-3.  To compile the firmware, use the "Build" task in the PlatformIO project task list or run the following command in the PlatformIO CLI terminal:
-    ```bash
-    platformio run
-    ```
-4.  To upload the firmware to the ESP32-S3 board, use the "Upload" task or run:
-    ```bash
-    platformio run --target upload
-    ```
-PlatformIO will automatically handle the correct board type (`freenove_esp32_s3_lite`) and download all necessary library dependencies.
+- **Architecture non-bloquante :** Basée sur une machine à états réactive (aucun `delay()`).
+- **Modes de navigation :** Contrôle manuel, suivi de cap (GOTO) et évitement d'obstacles autonome.
+- **Capteurs :** Magnétomètre (LSM303), Ultrasons (HC-SR04), Laser ToF (VL53L1X), Batterie, Bumper.
+- **Actionneurs :** Moteurs DC (propulsion différentielle), Tourelle Pan/Tilt (2 servos).
+- **Interfaces :** Écran LCD I2C, Télémétrie JSON via USB, Bluetooth Bluepad32.

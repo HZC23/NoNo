@@ -56,7 +56,7 @@ The robot sends telemetry data as a JSON object, terminated with a newline chara
 | Field | Description |
 | :--- | :--- |
 | `state` | The current state of the robot (e.g., "IDLE", "OBSTACLE_AVOIDANCE", "FOLLOW_HEADING"). |
-| `heading` | The robot's current compass heading in degrees (0-360). |
+| `heading` | The robot's current compass heading in degrees (0-359). |
 | `distance` | Distance from the ultrasonic sensor in cm. |
 | `distanceLaser` | Distance from the ToF laser sensor in cm. |
 | `battery` | Battery level percentage (0-100). |

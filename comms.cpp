@@ -7,73 +7,6 @@
 #include <Preferences.h>
 #include <cstring>  // For strcasecmp, strncpy, strcmp, strchr
 
-// --- Turret Control Configuration ---
-#define TURRET_DEADZONE 30          // Ignore small joystick movements
-#define TURRET_PAN_MIN 0            // Pan servo angle range
-#define TURRET_PAN_MAX 180
-#define TURRET_PAN_CENTER 90
-#define TURRET_TILT_MIN 45          // Tilt servo angle range  
-#define TURRET_TILT_MAX 135
-#define TURRET_TILT_CENTER 90
-
-// --- Turret Control Function (NEW SYSTEM) ---
-static void handleTurretControl(ControllerPtr ctl) {
-    if (!ctl) {
-        LOG_WARN("handleTurretControl: null controller pointer");
-        return;
-    }
-
-    // Read joystick axes
-    int rightX = ctl->axisRX();  // RIGHT stick X (horizontal pan) - WORKS
-    int accelVal = ctl->throttle(); // RIGHT trigger (throttle/RT) - for TILT UP
-    int brakeVal = ctl->brake();    // LEFT trigger (brake/LT) - for TILT DOWN
-    int rightY = ctl->axisRY();     // RIGHT stick Y - test/debug
-
-
-
-    // Calculate tilt from triggers: RT makes it look UP (45°), LT makes it look DOWN (135°)
-    // Trigger values: 0-1023
-    // accelVal (RT) positive → look up, brakeVal (LT) positive → look down
-    int tiltAxis = accelVal - brakeVal;  // RT positive = up, LT negative = down
-    
-    // Apply deadzone
-    if (abs(rightX) < TURRET_DEADZONE) rightX = 0;
-    if (abs(tiltAxis) < TURRET_DEADZONE) tiltAxis = 0;
-
-    // Map to servo angles
-    int panAngle = TURRET_PAN_CENTER;
-    int tiltAngle = TURRET_TILT_CENTER;
-
-    if (rightX != 0) {
-        // RIGHT stick LEFT (negative) → pan left (higher angle ~180)
-        // RIGHT stick RIGHT (positive) → pan right (lower angle ~0)
-        panAngle = map(rightX, XBOX_JOYSTICK_MIN, XBOX_JOYSTICK_MAX, TURRET_PAN_MAX, TURRET_PAN_MIN);
-    }
-
-    if (abs(tiltAxis) > TURRET_DEADZONE) {
-        // RT trigger (accelVal) positive → look up (lower tilt angle ~45° / TURRET_TILT_MIN)
-        // LT trigger (brakeVal) positive → look down (higher tilt angle ~135° / TURRET_TILT_MAX)
-        // Combined: accelVal - brakeVal ranges from -1023 to +1023
-        tiltAngle = map(tiltAxis, -1023, 1023, TURRET_TILT_MAX, TURRET_TILT_MIN);
-    }
-
-    // Constrain to valid ranges
-    panAngle = constrain(panAngle, TURRET_PAN_MIN, TURRET_PAN_MAX);
-    tiltAngle = constrain(tiltAngle, TURRET_TILT_MIN, TURRET_TILT_MAX);
-
-    // Attach tourelle if needed
-    if (!tourelle.isAttached()) {
-        tourelle.attach();
-    }
-
-    // Write to servos
-    tourelle.write(panAngle, tiltAngle);
-
-
-}
-
-extern Robot robot; // Declare the global robot object
-
 // --- Global Xbox Controller Instance ---
 XboxControllerBluepad xboxController(robot);
 
@@ -208,13 +141,6 @@ void sendTelemetry(Robot& robot) {
     doc["speedTarget"] = robot.targetSpeed;
     serializeJson(doc, Serial);
     Serial.println();
-}
-
-void sendPeriodicData(Robot& robot) {
-  if (millis() - robot.lastReportTime > robot.reportInterval) {
-    robot.lastReportTime = millis();
-    sendTelemetry(robot);
-  }
 }
 
 // --- Display Implementation ---
@@ -500,9 +426,6 @@ void XboxControllerBluepad::processControllers() {
                     toggle_msc_mode();
                 }
             }
-
-            // --- TURRET CONTROL (ALWAYS AVAILABLE VIA RIGHT JOYSTICK) ---
-            handleTurretControl(ctl);
 
             if (robot_ptr->currentState == MANUAL_COMMAND_MODE) {
                 // Read all axes and triggers

@@ -16,7 +16,7 @@ Toutes les commandes suivent une structure `CLÉ:VALEUR` et doivent se terminer 
 | `G` | `cap` | **Goto**: Fait pivoter le robot vers le `cap` absolu spécifié (0-359 degrés) et active le mode `FOLLOW_HEADING`. | `G:90` |
 | `S` | `vitesse` | **Speed**: Définit la vitesse cible manuelle (`vitesseCible`) de 0 à 255. | `S:200` |
 | `CO`| `offset` | **Compass Offset**: Applique une correction permanente (en degrés) au cap de la boussole. | `CO:-5.5` |
-| `SM`| `XBOX` ou `SERIAL` | **Set Mode**: Change le mode de contrôle principal et redémarre le robot. | `SM:XBOX` |
+| `SM`| `XBOX` ou `SERIAL` | **Set Mode**: Change le mode de contrôle principal et redémarre le robot. ⚠️ **AVERTISSEMENT** : cette commande redémarre le robot, ce qui peut interrompre les tâches en cours ou être dangereux si le robot est en mouvement. Arrêtez le robot, assurez-vous qu'il est en sécurité, et vérifiez que l'environnement est sûr avant d'émettre cette commande. | `SM:XBOX` |
 | `E` | `mode` | **État**: Change l'état comportemental du robot. Voir les modes ci-dessous. | `E:AVOID` |
 | `L` | `ON`, `OFF`, `TOGGLE` | **Light**: Contrôle les phares. | `L:ON` |
 

@@ -71,6 +71,7 @@ extern SdFat sd;
 void clearI2CBus();
 void scanI2CBus();
 void Arret();
+bool runSelfTest(Robot& robot);
 void updateBatteryStatus(Robot& robot);
 void scanDistances(Robot& robot); // Added
 int findClearestPath(Robot& robot); // Added
@@ -110,9 +111,9 @@ void headlightOn();
 void headlightOff();
 
 // Turret Control
-void updateTurret(Robot& robot, bool isMovingForward);
+void updateTurret(Robot& robot);
 void syncTurretWithSteering(int steeringAngle);
-int setAckermannAngle(Robot& robot, int angleError, int speed);
+int setAckermannAngle(Robot& robot);
 
 // LCD availability flag
 extern bool lcdAvailable;

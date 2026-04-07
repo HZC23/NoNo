@@ -17,21 +17,21 @@ Ce document décrit l'architecture logicielle du robot NoNo et mappe chaque comp
 
 | Composant | Catégorie | Rôle | Fichiers Responsables |
 |-----------|-----------|------|----------------------|
-| **Microcontrôleur ESP32-S3** | Hardware | Exécute le firmware | [NoNo.ino](../NoNo.ino) (orchestration), [config.h](../config.h) (pins) |
-| **Driver Moteurs MX1508** | Moteurs | Contrôle vitesse/direction moteurs | [hardware.h/cpp](../hardware.h) - `motorA`, `motorB` (FS_MX1508 library) |
-| **Moteurs DC (x2)** | Moteurs | Propulsion différentielle | [hardware.cpp](../hardware.cpp) - `updateMotorControl()` |
-| **LSM303 (IMU)** | Capteurs | Accelérométrie + magnétomètre | [compass.cpp](../compass.cpp) - `getCalibratedHeading()` |
-| **HC-SR04 (Ultrasons)** | Capteurs | Détection obstacles moyen terme | [sensor_task.cpp](../sensor_task.cpp) - ISR-based non-blocking |
-| **VL53L1X (Laser ToF)** | Capteurs | Détection obstacles précis court terme | [hardware.h/cpp](../hardware.h) - `vl53` object |
-| **PIR Motion Sensor** | Capteurs | Mode sentinelle (non utilisé actuellement) | [config.h](../config.h) - `SENTRY_MODE` state |
-| **Mesure Batterie (ADC)** | Capteurs | Tension batterie | [battery_utils.cpp](../battery_utils.cpp) - `readBatteryVoltage()` |
-| **Bumper (Microswitch)** | Capteurs | Détection collisions | [hardware.cpp](../hardware.cpp) - ISR `onBumperPress()` |
-| **Moteurs Servo (x3)** | Actionneurs | Pan/Tilt tourelle + direction optionnelle | [hardware.h/cpp](../hardware.h) - `Tourelle` class, `Servodirection` |
-| **LEDs NeoPixel (x4)** | Actionneurs | Retour visuel état | [led_fx.cpp](../led_fx.cpp) - `led_fx_update()` |
-| **Phare LED** | Actionneurs | Éclairage avant | [hardware.cpp](../hardware.cpp) - `headlightOn()`, `headlightOff()` |
-| **Écran LCD I2C** | Interface | Affichage télémétrie/menu | [comms.cpp](../comms.cpp) - `updateLcdDisplay()` |
-| **Carte SD (MicroSD)** | Stockage | Configuration, blagues, logs | [sd_utils.cpp](../sd_utils.cpp) |
-| **Manette Xbox (Bluetooth)** | Interface | Contrôle manuel | [comms.h/cpp](../comms.h) - `XboxControllerBluepad` |
+| **Microcontrôleur ESP32-S3** | Hardware | Exécute le firmware | [NoNo.ino](../../NoNo.ino) (orchestration), [config.h](../../config.h) (pins) |
+| **Driver Moteurs MX1508** | Moteurs | Contrôle vitesse/direction moteurs | [hardware.h/cpp](../../hardware.h) - `motorA`, `motorB` (FS_MX1508 library) |
+| **Moteurs DC (x2)** | Moteurs | Propulsion différentielle | [hardware.cpp](../../hardware.cpp) - `updateMotorControl()` |
+| **LSM303 (IMU)** | Capteurs | Accelérométrie + magnétomètre | [compass.cpp](../../compass.cpp) - `getCalibratedHeading()` |
+| **HC-SR04 (Ultrasons)** | Capteurs | Détection obstacles moyen terme | [sensor_task.cpp](../../sensor_task.cpp) - ISR-based non-blocking |
+| **VL53L1X (Laser ToF)** | Capteurs | Détection obstacles précis court terme | [hardware.h/cpp](../../hardware.h) - `vl53` object |
+| **PIR Motion Sensor** | Capteurs | Mode sentinelle (non utilisé actuellement) | [config.h](../../config.h) - `SENTRY_MODE` state |
+| **Mesure Batterie (ADC)** | Capteurs | Tension batterie | [battery_utils.cpp](../../battery_utils.cpp) - `readBatteryVoltage()` |
+| **Bumper (Microswitch)** | Capteurs | Détection collisions | [hardware.cpp](../../hardware.cpp) - ISR `onBumperPress()` |
+| **Moteurs Servo (x3)** | Actionneurs | Pan/Tilt tourelle + direction optionnelle | [hardware.h/cpp](../../hardware.h) - `Tourelle` class, `Servodirection` |
+| **LEDs NeoPixel (x4)** | Actionneurs | Retour visuel état | [led_fx.cpp](../../led_fx.cpp) - `led_fx_update()` |
+| **Phare LED** | Actionneurs | Éclairage avant | [hardware.cpp](../../hardware.cpp) - `headlightOn()`, `headlightOff()` |
+| **Écran LCD I2C** | Interface | Affichage télémétrie/menu | [comms.cpp](../../comms.cpp) - `updateLcdDisplay()` |
+| **Carte SD (MicroSD)** | Stockage | Configuration, blagues, logs | [sd_utils.cpp](../../sd_utils.cpp) |
+| **Manette Xbox (Bluetooth)** | Interface | Contrôle manuel | [comms.h/cpp](../../comms.h) - `XboxControllerBluepad` |
 
 ---
 
@@ -219,7 +219,7 @@ Voir **[NEW_COMPONENT_CHECKLIST.md](NEW_COMPONENT_CHECKLIST.md)** pour procédur
 | **Adafruit_NeoPixel** | LEDs RGB | 1.15.2 |
 | **ArduinoJson** | Parsing/génération JSON | 7.4.2 |
 | **SdFat - Adafruit Fork** | Carte SD | 2.3.102 |
-| **Bluepad32** (custom) | Xbox controller Bluetooth | Custom |
+| **Bluepad32** (custom) | Xbox controller Bluetooth | custom@main / (specify commit hash or tag for reproducibility) |
 
 ---
 
@@ -247,11 +247,15 @@ Voir **[NEW_COMPONENT_CHECKLIST.md](NEW_COMPONENT_CHECKLIST.md)** pour procédur
 | Document | Contenu |
 |----------|---------|
 | [hardware.md](hardware.md) | Composants matériels, pinout, schémas |
-| [software.md](software.md) | Vue d'ensemble logicielle (legacy) |
-| [commands.md](commands.md) | Protocole série et commandes |
-| [CHANGELOG.md](CHANGELOG.md) | Historique modifications |
-| [NEW_COMPONENT_CHECKLIST.md](NEW_COMPONENT_CHECKLIST.md) | Procédure intégration nouveaux composants |
-| [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Quick start pour développeurs |
+| [app_guide.md](../getting_started/app_guide.md) | Guide de connexion et protocole série |
+| [commands.md](../control/commands.md) | Référence des commandes série |
+| [CHANGELOG.md](../maintenance/CHANGELOG.md) | Historique modifications |
+| [NEW_COMPONENT_CHECKLIST.md](../maintenance/NEW_COMPONENT_CHECKLIST.md) | Procédure intégration nouveaux composants |
+| [DEVELOPER_GUIDE.md](../getting_started/DEVELOPER_GUIDE.md) | Quick start pour développeurs |
+| [controller_guide.md](../control/controller_guide.md) | Guide pour manette Xbox |
+| [calibration.md](../maintenance/calibration.md) | Calibration du magnétomètre |
+| [leds.md](leds.md) | Système de LEDs NeoPixel |
+| [FREERTOS_OPTIMIZATION_GUIDE.md](FREERTOS_OPTIMIZATION_GUIDE.md) | Guide d'optimisation FreeRTOS |
 
 ---
 

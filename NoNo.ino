@@ -12,47 +12,13 @@
 // --- Global Robot Instance Definition ---
 Robot robot;
 
-// --- Function to initialize robot default values ---
-void initializeRobotDefaults(Robot& robot) {
-    robot.speedAvg = VITESSE_MOYENNE;
-    robot.targetSpeed = robot.speedAvg; // Set master speed from config
-    robot.speedSlow = VITESSE_LENTE;
-    robot.speedRotation = VITESSE_ROTATION;
-    robot.speedRotationMax = VITESSE_ROTATION_MAX;
-    robot.turnTolerance = TOLERANCE_VIRAGE;
-    robot.KpHeading = Kp_HEADING;
-    robot.motorBCalibration = CALIBRATION_MOTEUR_B;
-    robot.minSpeedToMove = MIN_SPEED_TO_MOVE;
-    robot.accelRate = ACCEL_RATE;
-    robot.diffStrength = DIFF_STRENGTH;
-    robot.fwdDiffCoeff = FWD_DIFF_COEFF;
-    robot.servoNeutralDir = NEUTRE_DIRECTION;
-    robot.servoNeutralTurret = NEUTRE_TOURELLE;
-    robot.servoDirMin = SERVO_DIR_MIN;
-    robot.servoDirMax = SERVO_DIR_MAX;
-    robot.servoAngleHeadDown = ANGLE_TETE_BASSE;
-    robot.servoAngleGround = ANGLE_SOL;
-    robot.avoidBackupDuration = AVOID_BACKUP_DURATION_MS;
-    robot.minDistForValidPath = MIN_DIST_FOR_VALID_PATH;
-    robot.turretMoveTime = TURRET_MOVE_TIME_MS;
-    robot.turretScanDelay = SCAN_DELAY_MS;
-    robot.anglePenaltyFactor = ANGLE_PENALTY_FACTOR;
-    robot.seuilVide = SEUIL_VIDE;
-    robot.laserTimingBudget = VL53L1X_TIMING_BUDGET_US;
-    robot.laserInterMeasurementPeriod = VL53L1X_INTER_MEASUREMENT_PERIOD_MS;
-    robot.initialAutonomousDelay = INITIAL_AUTONOMOUS_DELAY_MS;
-    robot.pivotAngleThreshold = SEUIL_BASCULE_DIRECTION;
-    robot.compassInverted = COMPASS_IS_INVERTED;
-    robot.currentState = IDLE;
-}
-
 // --- SETUP ---
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
     logger_init(DEBUG_MODE ? LOG_LEVEL_DEBUG : LOG_LEVEL_INFO); // Initialize logger based on DEBUG_MODE
     LOG_INFO("--- NONO BOOTING ---");
     
-    initializeRobotDefaults(robot); // Initialize robot state with default values
+    initializeRobot(robot); // Initialize robot state with default values
     robot.startTime = millis();
 
     pinMode(VBAT, INPUT);
@@ -134,11 +100,13 @@ void setup() {
       robot.initialSpeedSlow = robot.speedSlow;
     } else {
       // This part requires the LCD to be initialized to show the message.
-      // lcd->init();
-      // setLcdText(robot, "SD Card Error!");
-      // while (true);
+      if (lcdAvailable) {
+        setLcdText(robot, "SD Card Error!");
+      } else {
+        LOG_ERROR("SD Card Error and LCD not available!");
+      }
+      while (true);
     }
-    // lcd->init(); // Already called
     
     if (robot.activeCommMode == COMM_MODE_XBOX) {
         LOG_INFO("COMM MODE: Xbox Controller (from %s)", commModeFromNVS ? "NVS" : "config DEFAULT_COMM_MODE");
@@ -170,7 +138,13 @@ void setup() {
       vl53->startContinuous(robot.laserInterMeasurementPeriod);
     }
 
-    // The turret servo (tourelle) is attached/detached automatically by the changeState function
+    // Run formal self-test before proceeding
+    bool selfTestPassed = runSelfTest(robot);
+    if (!selfTestPassed) {
+        LOG_WARN("Self-test reported failures - proceeding anyway");
+    }
+
+    // The turret servo (tourelle) is attached/detach...
     // to manage power. The direction servo (Servodirection) is attached manually here
     // and remains attached for immediate control.
     Servodirection.attach(PINDIRECTION);
@@ -200,10 +174,18 @@ void setup() {
 void loop() {
   robot.loopStartTime = millis();
 
+  // Handle Xbox controller input (non-blocking, thread-safe if it only writes to robot state handled by next mutex)
+  if (robot.activeCommMode == COMM_MODE_XBOX) {
+    xboxController.processControllers();
+  }
+  
+  // Serial input (non-blocking read)
+  checkSerial();
 
+  // Battery monitoring (non-critical data reads)
+  updateBatteryStatus(robot);
 
-  // CRITICAL SECTION #1: Bumper press handling & state changes
-  // KEEP LOCKED TIME MINIMAL (< 5ms for safety)
+  // CRITICAL SECTION #1: Safety & Power (Bumper, Battery Critical)
   if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
     if (bumperPressed) {
       bumperPressed = false;
@@ -214,22 +196,7 @@ void loop() {
         changeState(robot, EMERGENCY_EVASION, AVOID_IDLE);
       }
     }
-    xSemaphoreGive(robotMutex);
-  }
 
-  // Handle Xbox controller input (non-blocking, can be outside critical section if controller access is thread-safe)
-  if (robot.activeCommMode == COMM_MODE_XBOX) {
-    xboxController.processControllers();
-  }
-  
-  // Serial input (non-blocking read)
-  checkSerial();
-
-  // Battery monitoring (non-critical data reads, but check critical state in mutex)
-  updateBatteryStatus(robot);
-
-  // CRITICAL SECTION #2: Battery critical state check
-  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
     if (robot.batteryIsCritical) {
       Arret();
       LOG_ERROR("Batterie Vide. Robot en pause jusqu'a recharge.");
@@ -248,49 +215,43 @@ void loop() {
     xSemaphoreGive(robotMutex);
   }
 
-  // Sensor readings and compass (can tolerate slight stale data)
+  // Sensor updates that don't need the mutex for the hardware part
   sensor_update_task(robot);
   
-  bool isMoving = false;
-  RobotState currentState = IDLE;
-  
-  // CRITICAL SECTION #3: Compass and sensor data updates
+  // CRITICAL SECTION #2: Sensors, Navigation & Motors
   if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
-    // Update turret position
-    isMoving = (robot.currentState == MOVING_FORWARD || robot.currentState == FOLLOW_HEADING || robot.currentState == MAINTAIN_HEADING);
-    updateTurret(robot, isMoving);
+    // 1. Update Turret
+    updateTurret(robot);
     
+    // 2. Compass update
     if (robot.currentState != IDLE || (millis() - robot.lastCompassReadTime > COMPASS_READ_INTERVAL_MS)) {
       float heading = getCalibratedHeading(robot);
-      // Only update heading if compass is initialized (value is not NaN)
       if (!std::isnan(heading)) {
         robot.cap = heading;
       }
       robot.lastCompassReadTime = millis();
     }
     robot.currentPitch = getPitch(robot);
+
+    // 3. Laser distance
     if (robot.laserInitialized && vl53->dataReady()) {
-      robot.distanceLaser = vl53->readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
+      robot.distanceLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
     }
-    
-    currentState = robot.currentState;
-    xSemaphoreGive(robotMutex);
-  }
 
-  // Display and LED updates (can use stale data from previous cycle)
-  displayJokesIfIdle(robot);
-  updateLcdDisplay(robot);
-  handleLcdAnimations(robot);
-  led_fx_update(robot); // Update LED effects
-
-  // CRITICAL SECTION #4: Motor control and state management
-  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
+    // 4. Motor control & Telemetry
     updateMotorControl(robot);
 
     if (millis() - robot.lastReportTime > robot.reportInterval) {
       robot.lastReportTime = millis();
       sendTelemetry(robot);
     }
+
+    // 5. Display & FX Updates (using fresh state)
+    displayJokesIfIdle(robot);
+    updateLcdDisplay(robot);
+    handleLcdAnimations(robot);
+    led_fx_update(robot);
+
     xSemaphoreGive(robotMutex);
   }
 

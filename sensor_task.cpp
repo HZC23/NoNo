@@ -6,15 +6,33 @@
 void sensor_init() {
   pinMode(TRIGGER, OUTPUT);
   pinMode(ECHO, INPUT);
+  pinMode(PIN_MOTOR_SWITCH, INPUT_PULLUP);
   // The interrupt is now CHANGE, so it fires on both RISING and FALLING edges.
   attachInterrupt(digitalPinToInterrupt(ECHO), onEcho, CHANGE);
-  LOG_DEBUG("Ultrasonic sensor initialized with CHANGE interrupt.");
+  LOG_DEBUG("Ultrasonic sensor and motor switch initialized.");
 }
 
 // Non-blocking task to update sensor readings
 void sensor_update_task(Robot& robot) {
   static unsigned long last_ping_time = 0;
+  static unsigned long last_switch_check_time = 0;
   unsigned long current_time_micros = micros();
+  unsigned long current_time_ms = millis();
+
+  // 0. Update motor power switch state (with simple debounce)
+  if (current_time_ms - last_switch_check_time > 100) {
+    last_switch_check_time = current_time_ms;
+    // Assuming active-low (switch connects to GND when motors are powered)
+    bool currentSwitchState = (digitalRead(PIN_MOTOR_SWITCH) == LOW);
+    if (robot.motorPowerOn != currentSwitchState) {
+        robot.motorPowerOn = currentSwitchState;
+        if (!robot.motorPowerOn) {
+            LOG_WARN("ALIMENTATION MOTEURS COUPEE!");
+        } else {
+            LOG_INFO("Alimentation moteurs rétablie.");
+        }
+    }
+  }
 
   // 1. Check if a new echo has been received from the ISR
   if (echo_received) {

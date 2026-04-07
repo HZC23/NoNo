@@ -134,7 +134,9 @@ void calibrateCompass(Robot& robot) {
         setLcdText(robot, "Calib 360...");
     }
 
-    if (millis() - startTime < COMPASS_CALIBRATION_DURATION_MS) {
+    unsigned long elapsed = millis() - startTime;
+
+    if (elapsed < COMPASS_CALIBRATION_DURATION_MS) {
         compass->read();
         robot.magMin.x = min(robot.magMin.x, compass->m.x);
         robot.magMin.y = min(robot.magMin.y, compass->m.y);
@@ -162,6 +164,12 @@ void calibrateCompass(Robot& robot) {
         saveCompassCalibration(robot);
         calibrationStarted = false;
         changeState(robot, IDLE); // Return to IDLE state
+    } else if (elapsed > COMPASS_CALIBRATION_TIMEOUT_MS) {
+        // Safety timeout to prevent getting stuck in this state forever
+        LOG_ERROR("=== CALIBRATION TIMEOUT ===");
+        setLcdText(robot, "Calib. TIMEOUT");
+        calibrationStarted = false;
+        changeState(robot, IDLE);
     }
 }
 

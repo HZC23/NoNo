@@ -4,7 +4,7 @@
 
 // Non-blocking moving average filter for battery voltage
 float readBatteryVoltage() {
-    const int BATTERY_READINGS_COUNT = 10;
+    const int BATTERY_READINGS_COUNT = 20;
     static float batteryReadings[BATTERY_READINGS_COUNT] = {0};
     static int readingsIndex = 0;
     static bool readingsFilled = false;

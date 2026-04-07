@@ -14,12 +14,7 @@ void stabilizeTurretTilt(Robot& robot) {
     turretTiltAngle = constrain(targetTilt, 70, 110); // Physical limits of the servo
 }
 
-void updateTurret(Robot& robot, bool isMovingForward) {
-    // If in manual mode, the joystick has full control. Do not run autonomous logic.
-    if (robot.currentState == MANUAL_COMMAND_MODE) {
-        return;
-    }
-
+void updateTurret(Robot& robot) {
     // Only update turret at a fixed interval to prevent jitter
     if (millis() - lastTurretUpdate > 30) {
         lastTurretUpdate = millis();
@@ -37,6 +32,26 @@ void updateTurret(Robot& robot, bool isMovingForward) {
                 turretPanAngle += (2 * turretScanDirection);
                 if (turretPanAngle >= 120 || turretPanAngle <= 60) {
                     turretScanDirection *= -1;
+                }
+                break;
+            
+            case MANUAL_COMMAND_MODE:
+                if (robot.manualTargetVelocity > 0) {
+                    // If steering significantly, look into the turn
+                    if (abs(robot.manualTargetSteeringAngle - robot.servoNeutralDir) > 10) {
+                        int headAngle = 90 + (robot.manualTargetSteeringAngle - robot.servoNeutralDir) * 1.5;
+                        turretPanAngle = constrain(headAngle, 30, 150);
+                    } else {
+                        // Gentle side-to-side scanning when moving forward in manual mode
+                        turretPanAngle += (2 * turretScanDirection);
+                        if (turretPanAngle >= 110 || turretPanAngle <= 70) {
+                            turretScanDirection *= -1;
+                        }
+                    }
+                } else {
+                    // Gently return to center when not moving forward
+                    if (turretPanAngle > 90) turretPanAngle--;
+                    else if (turretPanAngle < 90) turretPanAngle++;
                 }
                 break;
 
@@ -74,11 +89,7 @@ void syncTurretWithSteering(int steeringAngle) {
     tourelle.write(turretPanAngle, turretTiltAngle);
 }
 
-int setAckermannAngle(Robot& robot, int angleError, int speed) {
-    // This function is now used to control the steering servo for Ackermann steering.
-    // The angleError and speed parameters are vestiges of a differential drive setup
-    // and are not directly used here, as the target steering angle comes from the joystick.
-    // Servodirection.write(robot.manualTargetSteeringAngle);
-    // LOG_DEBUG("Ackermann Steering Angle: %d", robot.manualTargetSteeringAngle);
-    return robot.manualTargetSteeringAngle; // Return the angle for potential external use or logging
+int setAckermannAngle(Robot& robot) {
+    // This function returns the target steering angle for external use or logging.
+    return robot.manualTargetSteeringAngle;
 }

@@ -15,10 +15,6 @@ const char* stateToString(RobotState state) {
     case MOVING_BACKWARD: return "MOVING_BACKWARD";
     case TURNING_LEFT: return "TURNING_LEFT";
     case TURNING_RIGHT: return "TURNING_RIGHT";
-    case MANUAL_FORWARD: return "MANUAL_FORWARD";
-    case MANUAL_BACKWARD: return "MANUAL_BACKWARD";
-    case MANUAL_TURNING_LEFT: return "MANUAL_TURNING_LEFT";
-    case MANUAL_TURNING_RIGHT: return "MANUAL_TURNING_RIGHT";
     case OBSTACLE_AVOIDANCE: return "OBSTACLE_AVOIDANCE";
     case WAITING_FOR_TURRET: return "WAITING_FOR_TURRET";
     case FOLLOW_HEADING: return "FOLLOW_HEADING";
@@ -152,7 +148,7 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
       // Check if turret has moved and data is ready, or if we've timed out waiting
       if (millis() - robot.lastActionTime > robot.turretMoveTime) {
         if (robot.laserInitialized && vl53->dataReady()) {
-          robot.quickScanLeftDist = vl53->readRangeContinuousMillimeters() / 10;
+          robot.quickScanLeftDist = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
           LOG_DEBUG("AVOID: Quick scan LEFT distance: %d cm", robot.quickScanLeftDist);
           robot.actionStarted = false;
           robot.obstacleAvoidanceState = AVOID_QUICK_SCAN_RIGHT;
@@ -175,7 +171,7 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
       // Check if turret has moved and data is ready, or if we've timed out waiting
       if (millis() - robot.lastActionTime > robot.turretMoveTime) {
         if (robot.laserInitialized && vl53->dataReady()) {
-          robot.quickScanRightDist = vl53->readRangeContinuousMillimeters() / 10;
+          robot.quickScanRightDist = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
           LOG_DEBUG("AVOID: Quick scan RIGHT distance: %d cm", robot.quickScanRightDist);
           robot.actionStarted = false;
           robot.obstacleAvoidanceState = AVOID_EVALUATE_QUICK_SCANS;
@@ -283,7 +279,12 @@ void handleObstacleAvoidanceState(Robot& robot, int& targetA, int& targetB) {
 }
 
 void updateMotorControl(Robot& robot) {
-  if (robot.batteryIsCritical) { Arret(); return; }
+  if (robot.batteryIsCritical || !robot.motorPowerOn) { 
+    Arret(); 
+    robot.currentPwmA = 0;
+    robot.currentPwmB = 0;
+    return; 
+  }
 
   int targetA = 0;
   int targetB = 0;
@@ -294,21 +295,28 @@ void updateMotorControl(Robot& robot) {
     case FOLLOW_HEADING: handleFollowHeadingState(robot, targetA, targetB); break;
     case MOVING_BACKWARD: targetA = -robot.targetSpeed; targetB = -robot.targetSpeed; break;
     case MANUAL_COMMAND_MODE:
-        // Safety override for manual movement in Ackermann steering
-        if (bumperPressed || (robot.dusm < 5 && robot.dusm > 0)) {
-            targetA = 0; // Prevent all motion
-            targetB = 0; // Prevent all motion
-            Servodirection.write(robot.servoNeutralDir); // Center steering
-            trigger_rumble(40, 200, 0); // Stronger haptic notification for safety override
-        } else {
-            // If Ackermann steering is enabled, but only a pivot turn is commanded (velocity is 0)
-            // then use calculateManualPwm for differential pivot turn.
-            if (robot.manualTargetVelocity == 0 && robot.manualTargetTurn != 0) {
-                calculateManualPwm(robot, targetA, targetB);
+        {
+            // Safety override for manual movement in Ackermann steering
+            // If moving forward, check for obstacles.
+            bool obstacleAhead = (robot.manualTargetVelocity > 0 && isObstacleDetected(robot));
+            bool bumperBlocked = (robot.manualTargetVelocity > 0 && bumperPressed);
+            bool ultrasonicNear = (robot.manualTargetVelocity > 0 && robot.dusm < 5 && robot.dusm > 0);
+            
+            if (bumperBlocked || obstacleAhead || ultrasonicNear) {
+                targetA = 0; // Prevent forward motion
+                targetB = 0; // Prevent forward motion
+                Servodirection.write(robot.servoNeutralDir); // Center steering
+                trigger_rumble(40, 200, 0); // Stronger haptic notification for safety override
             } else {
-                // Otherwise, proceed with Ackermann steering (velocity from left joystick Y-axis).
-                targetA = robot.manualTargetVelocity;
-                targetB = robot.manualTargetVelocity;
+                // If Ackermann steering is enabled, but only a pivot turn is commanded (velocity is 0)
+                // then use calculateManualPwm for differential pivot turn.
+                if (robot.manualTargetVelocity == 0 && robot.manualTargetTurn != 0) {
+                    calculateManualPwm(robot, targetA, targetB);
+                } else {
+                    // Otherwise, proceed with Ackermann steering (velocity from left joystick Y-axis).
+                    targetA = robot.manualTargetVelocity;
+                    targetB = robot.manualTargetVelocity;
+                }
             }
         }
         break;
@@ -342,8 +350,13 @@ void calculateManualPwm(Robot& robot, int& outPwmA, int& outPwmB) {
     int turn = robot.manualTargetTurn;
 
     // Safety override for manual movement
-    if (bumperPressed || (robot.dusm < 5 && robot.dusm > 0)) {
-        velocity = 0; // Prevent all motion
+    // If moving forward, check for obstacles.
+    bool obstacleAhead = (velocity > 0 && isObstacleDetected(robot));
+    bool bumperBlocked = (velocity > 0 && bumperPressed);
+    bool ultrasonicNear = (velocity > 0 && robot.dusm < 5 && robot.dusm > 0);
+
+    if (bumperBlocked || obstacleAhead || ultrasonicNear) {
+        velocity = 0; // Prevent forward motion
         turn = 0;     // Stop turning
         Servodirection.write(robot.servoNeutralDir); // Center steering
         trigger_rumble(40, 200, 0); // Stronger haptic notification for safety override

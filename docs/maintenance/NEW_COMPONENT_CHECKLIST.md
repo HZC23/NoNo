@@ -24,8 +24,8 @@ Processus étape-par-étape pour intégrer un nouveau capteur ou actionneur au r
 ## Phase 2 : Pinout & Configuration
 
 ### Step 1 : Réserver les Pins
-- [ ] **Consulter [hardware.md](hardware.md)** pinout table
-- [ ] **Vérifier pins disponibles** dans [config.h](../config.h)
+- [ ] **Consulter [hardware.md](../technical/hardware.md)** pinout table
+- [ ] **Vérifier pins disponibles** dans [config.h](../../config.h)
 - [ ] **Assigner pins** (noter conflits potentiels)
 
 **Pour LiDAR360** :
@@ -79,7 +79,7 @@ extern SICKROS2Driver lidar360;
 // hardware.cpp
 SICKROS2Driver lidar360;
 
-void lidar360_init() {
+void lidar360_init(Robot& robot) {
     Serial1.begin(LIDAR_BAUD_RATE, SERIAL_8N1, LIDAR_RX_PIN, LIDAR_TX_PIN);
     if (!lidar360.begin(&Serial1)) {
         LOG_ERROR("LiDAR360 failed to initialize!");
@@ -371,7 +371,7 @@ void test_lidar360() {
 
 ### RAM overflow
 **Problème** : Compilation fails, ROM trop grande
-**Solution** : Réduire buffer `/361 distances` → seulement angles intéressants, ou compresser format
+**Solution** : Réduire buffer 361 distances → seulement angles intéressants, ou compresser format
 
 ---
 
@@ -381,16 +381,17 @@ Voici un template generic pour nouveau capteur :
 
 ```cpp
 // === config.h ===
+// === config.h ===
 #define MY_SENSOR_PIN          XX
 #define MY_SENSOR_INTERVAL_MS  50
 #define MY_SENSOR_TIMEOUT_MS   200
 
 // === hardware.h ===
-void my_sensor_init();
+void my_sensor_init(Robot& robot);
 void my_sensor_update(Robot& robot);
 
 // === hardware.cpp ===
-void my_sensor_init() {
+void my_sensor_init(Robot& robot) {
     LOG_INFO("Initializing MY_SENSOR...");
     // Init code
     robot.my_sensor_ready = true;

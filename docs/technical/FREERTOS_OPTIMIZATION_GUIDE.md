@@ -69,17 +69,18 @@ void motorControlTask(void *param) {
         sensor_update_task(robot);
         
         // Compass reading (I2C, ~10ms)
+        bool isMoving = false;
         if(xSemaphoreTake(robotMutex, 10)) {
             robot.cap = getCalibratedHeading(robot);
             robot.currentPitch = getPitch(robot);
             updateMotorControl(robot);
             // Determine if robot is moving (used by updateTurret)
-            bool isMoving = (robot.currentState == MOVING_FORWARD || 
+            isMoving = (robot.currentState == MOVING_FORWARD || 
                             robot.currentState == FOLLOW_HEADING || 
                             robot.currentState == MAINTAIN_HEADING);
-            xSemaphoreGive(robotMutex);
-            // Update turret outside of critical section
+            // Call updateTurret inside critical section to avoid race condition
             updateTurret(robot, isMoving);
+            xSemaphoreGive(robotMutex);
         }
         
         // ~10ms per iteration (target: 100Hz control loop)
@@ -110,8 +111,11 @@ xTaskCreatePinnedToCore(
 
 // Loop becomes FreeRTOS scheduler
 void loop() {
-    // Do nothing - FreeRTOS takes over
-    vTaskDelete(NULL);
+    // Do nothing - FreeRTOS scheduler takes over
+    // Block indefinitely to allow FreeRTOS tasks to run
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 ```
 
@@ -175,7 +179,7 @@ Current heap usage (estimated):
 - Global objects: ~2KB
 - Config arrays: ~1KB  
 - Robot struct: ~4KB
-- **Available heap for additional tasks**: ~300KB (ESP32-S3 SRAM = ~520KB total, minus ~200KB for firmware/stacks)
+- **Available heap for additional tasks**: ~320KB (ESP32-S3 SRAM = ~520KB total, minus ~200KB for firmware/stacks)
 
 Each task stack: 4096 bytes (configurable)
 Two additional tasks = ~8KB stack overhead

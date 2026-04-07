@@ -19,8 +19,8 @@
 
 // --- SERVOMOTEURS (N'importe quelle pin PWM) ---
 #define PINDIRECTION  1   // Servo Direction
-#define PINTOURELLE_H 4   // Pan
-#define PINTOURELLE_V 2   // Tilt
+#define PINTOURELLE_H 2   // Pan
+#define PINTOURELLE_V 4   // Tilt
 
 // --- MOTEURS DC (Pont en H) ---
 #define AIN1          17
@@ -34,6 +34,7 @@
 #define VBAT          5 // Entrée Analogique
 #define PIR           14 // Moved from 40
 #define INTERUPTPIN   21 // Bumper switch for collision detection
+#define PIN_MOTOR_SWITCH 15 // Switch to detect motor power state
 
 // --- SORTIES ---
 #define NEOPIXEL_PIN  48   // Souvent la LED intégrée sur le S3
@@ -96,7 +97,7 @@
 #define SCAN_H_STEP 10
 #define SCAN_DISTANCE_ARRAY_SIZE 181 // To hold angles 0-180 inclusive
 #define COMPASS_IS_INVERTED false // Mettre à true si la boussole est montée à l'envers
-#define MM_TO_CM_DIVISOR 10 // Conversion factor for millimeters to centimeters
+#define MM_PER_CM 10 // Conversion factor for millimeters to centimeters
 
 // --- Sensor Task Parameters ---
 #define ULTRASONIC_PING_INTERVAL_MS 60 // Minimum time between pings
@@ -121,6 +122,7 @@
 // === COMPASS CONSTANTS ===
 #define COMPASS_READ_INTERVAL_MS 50
 #define COMPASS_CALIBRATION_DURATION_MS 15000
+#define COMPASS_CALIBRATION_TIMEOUT_MS 30000 // Max time to stay in calibration state
 #define COMPASS_CALIBRATION_VALIDATION_THRESHOLD 32000
 #define COMPASS_MIN_INT16 -32768
 #define COMPASS_MAX_INT16 32767
@@ -275,10 +277,6 @@ enum RobotState {
   MOVING_BACKWARD,
   TURNING_LEFT,
   TURNING_RIGHT,
-  MANUAL_FORWARD,
-  MANUAL_BACKWARD,
-  MANUAL_TURNING_LEFT,
-  MANUAL_TURNING_RIGHT,
   OBSTACLE_AVOIDANCE,
   WAITING_FOR_TURRET,
   FOLLOW_HEADING,

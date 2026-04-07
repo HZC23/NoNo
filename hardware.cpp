@@ -78,10 +78,6 @@ void Tourelle::detach() {
 }
 
 void Tourelle::write(int angleH, int angleV) {
-    if (!attached) {
-        LOG_WARN("Tourelle not attached, skipping write command");
-        return;
-    }
     servoH.write(angleH);
     servoV.write(angleV);
 }
@@ -99,6 +95,96 @@ int Tourelle::getAngleVertical() {
 void Arret() {
     motorA.motorBrake();
     motorB.motorBrake();
+}
+
+bool runSelfTest(Robot& robot) {
+    LOG_INFO("--- STARTING SELF TEST ---");
+    setLcdText(robot, "Self-Test...");
+    led_fx_set_all(255, 255, 255); // White during test
+    delay(500);
+    
+    bool all_ok = true;
+
+    // 1. Check I2C Devices
+    LOG_INFO("1. Testing I2C Devices...");
+    int i2c_count = scanI2CBus();
+    if (i2c_count <= 0) {
+        LOG_ERROR("I2C test FAILED: no devices found");
+        all_ok = false;
+    }
+
+    // 2. Test Servos
+    LOG_INFO("2. Testing Servos...");
+    setLcdText(robot, "Test: Servos");
+    
+    // Direction Servo
+    LOG_INFO(" - Steering Servo...");
+    Servodirection.write(robot.servoDirMin);
+    delay(300);
+    Servodirection.write(robot.servoDirMax);
+    delay(300);
+    Servodirection.write(robot.servoNeutralDir);
+    delay(300);
+
+    // Turret Servos
+    LOG_INFO(" - Turret Servos...");
+    tourelle.attach();
+    tourelle.write(45, 90);
+    delay(300);
+    tourelle.write(135, 90);
+    delay(300);
+    tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
+    delay(300);
+    tourelle.detach();
+
+    // 3. Test Motors (Very brief pulse)
+    LOG_INFO("3. Testing Motors...");
+    setLcdText(robot, "Test: Moteurs");
+    motorA.motorGo(100);
+    motorB.motorGo(100);
+    delay(150);
+    Arret();
+    delay(200);
+    motorA.motorGo(-100);
+    motorB.motorGo(-100);
+    delay(150);
+    Arret();
+
+    // 4. Check Sensors
+    LOG_INFO("4. Testing Sensors...");
+    setLcdText(robot, "Test: Capteurs");
+    
+    // Laser
+    if (robot.laserInitialized) {
+        int d = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
+        LOG_INFO(" - Laser check: %d cm", d);
+        if (d < 5 || d > 4000) {  // Sanity check: valid range is ~5cm to 4m
+            LOG_ERROR("Laser test FAILED: range %d cm out of bounds", d);
+            all_ok = false;
+        }
+    }
+    
+    // Ultrasonic (just a quick check if it's producing data)
+    sensor_update_task(robot);
+    LOG_INFO(" - Ultrasonic check: %d cm", robot.dusm);
+    if (robot.dusm <= 0) {
+        LOG_ERROR("Ultrasonic test FAILED: distance %d cm invalid", robot.dusm);
+        all_ok = false;
+    }
+
+    // 5. Completion
+    LOG_INFO("--- SELF TEST COMPLETE ---");
+    if (all_ok) {
+        led_fx_set_all(0, 255, 0); // Green for success
+        setLcdText(robot, "Self-Test OK");
+    } else {
+        led_fx_set_all(255, 0, 0); // Red for failure
+        setLcdText(robot, "Self-Test FAIL");
+    }
+    delay(1000);
+    led_fx_off();
+    
+    return all_ok;
 }
 
 void updateBatteryStatus(Robot& robot) {
@@ -160,7 +246,7 @@ void scanDistances(Robot& robot) {
 
         int distLaser = robot.maxUltrasonicDistance; // Default to max distance
         if (robot.laserInitialized && vl53->dataReady()) {
-            distLaser = vl53->readRangeContinuousMillimeters() / MM_TO_CM_DIVISOR;
+            distLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
             if (vl53->timeoutOccurred() || distLaser <= 0) {
                 distLaser = robot.maxUltrasonicDistance;
             }
@@ -277,7 +363,7 @@ void clearI2CBus() {
 }
 
 // Function to scan the I2C bus for connected devices WITH TIMEOUT PROTECTION
-void scanI2CBus() {
+int scanI2CBus() {
   LOG_DEBUG("Scanning I2C bus (with timeout protection)...");
   
   // Set I2C timeout to prevent hanging on unresponsive devices
@@ -307,6 +393,8 @@ void scanI2CBus() {
   } else {
     LOG_DEBUG("I2C scan complete: found %d devices.", nDevices);
   }
+  
+  return nDevices;
 }
 
 // Headlight control

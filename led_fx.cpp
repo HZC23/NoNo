@@ -12,32 +12,20 @@ const uint32_t COLOR_YELLOW = pixels.Color(255, 255, 0);
 const uint32_t COLOR_ORANGE = pixels.Color(255, 100, 0);
 const uint32_t COLOR_WHITE = pixels.Color(255, 255, 255);
 const uint32_t COLOR_PURPLE = pixels.Color(128, 0, 128);
+const uint32_t COLOR_CYAN = pixels.Color(0, 255, 255);
+const uint32_t COLOR_MAGENTA = pixels.Color(255, 0, 255);
 
 // Internal state for animations
-static int scanner_pos = 1;
-static int scanner_dir = 1;
 static unsigned long last_anim_tick = 0;
+static int scanner_pos = 0;
+static int scanner_dir = 1;
 
 void led_fx_init() {
     LOG_INFO("LED FX: Starting NeoPixel initialization on pin %d with %d LEDs", NEOPIXEL_PIN, NEOPIXEL_COUNT);
     pixels.begin();
-    LOG_INFO("LED FX: pixels.begin() completed");
-    
-    pixels.setBrightness(100); // INCREASED from 50 to make LEDs more visible
-    LOG_INFO("LED FX: Brightness set to 100 (was 50)");
-    
+    pixels.setBrightness(100); 
     pixels.clear();
-    LOG_INFO("LED FX: Buffer cleared");
-    
     pixels.show();
-    LOG_INFO("LED FX: NeoPixels initialized and displayed (should be OFF)");
-}
-
-// Helper to set color on the 3 visible LEDs only (indices 1, 2, 3)
-void led_fx_set_visible_only(uint32_t color) {
-    for(int i = 1; i < NEOPIXEL_COUNT; i++) {
-        pixels.setPixelColor(i, color);
-    }
 }
 
 void led_fx_off() {
@@ -53,186 +41,203 @@ void led_fx_set_all(uint8_t r, uint8_t g, uint8_t b) {
     pixels.show();
 }
 
-// --- Specific Effect Helpers ---
+// --- Animation Helpers ---
 
-void effect_breathing(uint32_t base_color, float speed = 2000.0) {
+void effect_breathing(int led_idx, uint32_t base_color, float speed = 2000.0) {
     float breath = (sin(millis() / speed * 2 * PI) + 1) / 2;
     uint8_t r = (base_color >> 16) & 0xFF;
     uint8_t g = (base_color >> 8) & 0xFF;
     uint8_t b = base_color & 0xFF;
-    led_fx_set_visible_only(pixels.Color(r * breath, g * breath, b * breath));
+    pixels.setPixelColor(led_idx, pixels.Color(r * breath, g * breath, b * breath));
 }
 
-void effect_flashing(uint32_t color1, uint32_t color2, int period) {
+void effect_flashing(int led_idx, uint32_t color1, uint32_t color2, int period) {
     uint32_t color = (millis() % period < period / 2) ? color1 : color2;
-    led_fx_set_visible_only(color);
+    pixels.setPixelColor(led_idx, color);
 }
 
-void effect_scanner(uint32_t color, int speed_ms) {
+void effect_scanner_all(uint32_t color, int speed_ms) {
     if (millis() - last_anim_tick > speed_ms) {
         scanner_pos += scanner_dir;
-        if (scanner_pos >= NEOPIXEL_COUNT - 1 || scanner_pos <= 1) {
+        if (scanner_pos >= NEOPIXEL_COUNT - 1 || scanner_pos <= 0) {
             scanner_dir *= -1;
         }
         last_anim_tick = millis();
     }
+    pixels.clear();
     pixels.setPixelColor(scanner_pos, color);
 }
 
-void effect_rainbow() {
-    for(int i=1; i<NEOPIXEL_COUNT; i++) {
-        uint16_t hue = (((i * 65536 / (NEOPIXEL_COUNT-1)) + (millis()/10)) % 65536);
+void effect_rainbow_all() {
+    for(int i=0; i<NEOPIXEL_COUNT; i++) {
+        uint16_t hue = (((i * 65536 / NEOPIXEL_COUNT) + (millis()/10)) % 65536);
         pixels.setPixelColor(i, pixels.gamma32(pixels.ColorHSV(hue, 255, 255)));
     }
 }
 
-// --- System LED Handling ---
+// --- Individual LED Handlers ---
 
-void update_system_led(const Robot& robot) {
-    // LED 0 is the system status LED
-    if (robot.batteryIsCritical) {
-        pixels.setPixelColor(0, (millis() % 200 < 100) ? COLOR_RED : COLOR_OFF);
+// LED 0: System Heartbeat / Global Status
+void update_led_system(const Robot& robot) {
+    if (robot.batteryIsCritical || robot.isStuckConfirmed) {
+        effect_flashing(0, COLOR_RED, COLOR_OFF, 200);
+    } else if (robot.currentState == CLIFF_DETECTED) {
+        effect_flashing(0, COLOR_ORANGE, COLOR_OFF, 400);
     } else {
         // Heartbeat green
-        float pulse = (sin(millis() / 1000.0 * 2 * PI) + 1) / 2;
-        pixels.setPixelColor(0, pixels.Color(0, 50 * pulse, 0));
+        effect_breathing(0, COLOR_GREEN, 3000.0);
     }
 }
 
+// LED 1: Navigation Mode
+void update_led_mode(const Robot& robot) {
+    switch (robot.currentNavMode) {
+        case MANUAL_CONTROL:
+            pixels.setPixelColor(1, COLOR_BLUE);
+            break;
+        case AUTONOMOUS_CONTROL:
+            if (robot.currentState == SENTRY_MODE) {
+                pixels.setPixelColor(1, COLOR_CYAN);
+            } else {
+                pixels.setPixelColor(1, COLOR_PURPLE);
+            }
+            break;
+        default:
+            pixels.setPixelColor(1, COLOR_OFF);
+            break;
+    }
+}
+
+// LED 2: Battery Status
+void update_led_battery(const Robot& robot) {
+    if (robot.batteryIsCritical) {
+        effect_flashing(2, COLOR_RED, COLOR_OFF, 400);
+    } else if (robot.batteryIsLow) {
+        pixels.setPixelColor(2, COLOR_ORANGE);
+    } else {
+        pixels.setPixelColor(2, COLOR_GREEN);
+    }
+}
+
+// LED 3: Activity / Movement / Sensors
+void update_led_activity(const Robot& robot) {
+    // Flash white if an obstacle is very close
+    if (robot.obstacleDetectedByLaser || (robot.dusm > 0 && robot.dusm < 15)) {
+        effect_flashing(3, COLOR_WHITE, COLOR_OFF, 200);
+        return;
+    }
+
+    switch (robot.currentState) {
+        case IDLE:
+            pixels.setPixelColor(3, COLOR_OFF);
+            break;
+        case MOVING_FORWARD:
+        case FOLLOW_HEADING:
+        case MAINTAIN_HEADING:
+        case SMART_AVOIDANCE:
+            pixels.setPixelColor(3, COLOR_GREEN);
+            break;
+        case MOVING_BACKWARD:
+        case BACKING_UP_OBSTACLE:
+            pixels.setPixelColor(3, COLOR_RED);
+            break;
+        case TURNING_LEFT:
+        case TURNING_RIGHT:
+        case SMART_TURNING:
+            pixels.setPixelColor(3, COLOR_YELLOW);
+            break;
+        case SCANNING_FOR_PATH:
+        case WAITING_FOR_TURRET:
+            pixels.setPixelColor(3, COLOR_BLUE);
+            break;
+        default:
+            pixels.setPixelColor(3, COLOR_OFF);
+            break;
+    }
+}
+
+// --- Main Update Function ---
+
 void led_fx_update(const Robot& robot) {
     static unsigned long last_update = 0;
-    const int update_interval = 30; // ms, slightly faster for smoother anims
+    const int update_interval = 40; 
 
     if (millis() - last_update < update_interval) {
         return;
     }
     last_update = millis();
 
-    pixels.clear(); 
+    // 1. Check for High-Priority Global Events (Full LED Combinations)
     
-    // 1. Update System LED (Pixel 0)
-    update_system_led(robot);
-
-    // 2. Determine Priority State for Visible LEDs (1-3)
-    
-    // Priority 1: Critical battery
-    if (robot.batteryIsCritical) {
-        effect_flashing(COLOR_RED, COLOR_OFF, 400);
+    // Priority 1: Emergency / Impact / Stuck
+    if (robot.currentState == EMERGENCY_EVASION || robot.isStuckConfirmed) {
+        uint32_t flash_color = (millis() % 200 < 100) ? COLOR_WHITE : COLOR_RED;
+        for(int i=0; i<NEOPIXEL_COUNT; i++) pixels.setPixelColor(i, flash_color);
         pixels.show();
         return;
     }
     
     // Priority 2: Cliff detected
     if (robot.currentState == CLIFF_DETECTED) {
-        effect_flashing(COLOR_ORANGE, COLOR_OFF, 600);
-        pixels.show();
-        return;
-    }
-    
-    // Priority 3: Emergency evasion (Bumper)
-    if (robot.currentState == EMERGENCY_EVASION) {
-        effect_flashing(COLOR_WHITE, COLOR_RED, 200);
+        uint32_t flash_color = (millis() % 400 < 200) ? COLOR_ORANGE : COLOR_OFF;
+        for(int i=0; i<NEOPIXEL_COUNT; i++) pixels.setPixelColor(i, flash_color);
         pixels.show();
         return;
     }
 
-    // 3. Standard state-based effects
-    switch (robot.currentState) {
-        case IDLE:
-            effect_breathing(pixels.Color(0, 0, 150));
-            break;
-
-        case MOVING_FORWARD:
-        case FOLLOW_HEADING:
-        case MAINTAIN_HEADING:
-        case SMART_AVOIDANCE:
-            led_fx_set_visible_only(COLOR_GREEN);
-            break;
-
-        case MOVING_BACKWARD:
-            led_fx_set_visible_only(COLOR_ORANGE);
-            break;
-
-        case TURNING_LEFT:
-            pixels.setPixelColor(3, COLOR_YELLOW);
-            break;
-
-        case TURNING_RIGHT:
-            pixels.setPixelColor(1, COLOR_YELLOW);
-            break;
-
-        case OBSTACLE_AVOIDANCE:
-            effect_scanner(COLOR_RED, 80);
-            break;
-
-        case SENTRY_MODE:
-            if(robot.sentryState == SENTRY_TRACKING || robot.sentryState == SENTRY_ALARM) {
-                 effect_flashing(COLOR_RED, COLOR_YELLOW, 200);
-            } else { // SENTRY_SCAN
-                effect_scanner(COLOR_BLUE, 100);
-            }
-            break;
-
-        case CALIBRATING_COMPASS:
-            effect_rainbow();
-            break;
-
-        default:
-            if (robot.batteryIsLow) {
-                effect_breathing(COLOR_YELLOW, 3000.0);
-            }
-            break;
+    // Priority 3: Calibration
+    if (robot.currentState == CALIBRATING_COMPASS) {
+        effect_rainbow_all();
+        pixels.show();
+        return;
     }
+
+    // Priority 4: Obstacle Avoidance Scan
+    if (robot.currentState == OBSTACLE_AVOIDANCE) {
+        effect_scanner_all(COLOR_RED, 80);
+        pixels.show();
+        return;
+    }
+
+    // 2. Standard Mode: Individual LED roles
+    pixels.clear();
+    update_led_system(robot);
+    update_led_mode(robot);
+    update_led_battery(robot);
+    update_led_activity(robot);
     
     pixels.show();
 }
 
 // --- Startup LED Test ---
 void led_fx_startup_test() {
-    LOG_INFO("LED FX: Starting LED startup test sequence...");
+    LOG_INFO("LED FX: Starting enhanced LED startup sequence...");
     
-    // Test 1: All LEDs RED (400ms)
-    LOG_INFO("LED FX: Test 1 - All LEDs RED");
-    led_fx_set_all(255, 0, 0);
-    delay(400);
+    // 1. Mode LED Test (Blue then Purple)
+    pixels.clear();
+    pixels.setPixelColor(1, COLOR_BLUE); pixels.show(); delay(300);
+    pixels.setPixelColor(1, COLOR_PURPLE); pixels.show(); delay(300);
     
-    // Test 2: All LEDs GREEN (400ms)
-    LOG_INFO("LED FX: Test 2 - All LEDs GREEN");
-    led_fx_set_all(0, 255, 0);
-    delay(400);
-    
-    // Test 3: All LEDs BLUE (400ms)
-    LOG_INFO("LED FX: Test 3 - All LEDs BLUE");
-    led_fx_set_all(0, 0, 255);
-    delay(400);
-    
-    // Test 4: All LEDs YELLOW (400ms)
-    LOG_INFO("LED FX: Test 4 - All LEDs YELLOW");
-    led_fx_set_all(255, 255, 0);
-    delay(400);
-    
-    // Test 5: Individual LED test - each LED lights up sequentially (200ms each)
-    LOG_INFO("LED FX: Test 5 - Individual LEDs (each 200ms)");
-    for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-        pixels.clear();
-        pixels.setPixelColor(i, COLOR_WHITE);
+    // 2. Battery LED Test (Red -> Orange -> Green)
+    pixels.clear();
+    pixels.setPixelColor(2, COLOR_RED); pixels.show(); delay(300);
+    pixels.setPixelColor(2, COLOR_ORANGE); pixels.show(); delay(300);
+    pixels.setPixelColor(2, COLOR_GREEN); pixels.show(); delay(300);
+
+    // 3. Activity LED Test (White pulse)
+    for(int i=0; i<3; i++) {
+        pixels.setPixelColor(3, COLOR_WHITE); pixels.show(); delay(100);
+        pixels.setPixelColor(3, COLOR_OFF); pixels.show(); delay(100);
+    }
+
+    // 4. Final Rainbow Wipe
+    unsigned long start = millis();
+    while (millis() - start < 1000) {
+        effect_rainbow_all();
         pixels.show();
-        delay(200);
+        delay(20);
     }
     
-    // Test 6: Rainbow effect (1s)
-    LOG_INFO("LED FX: Test 6 - Rainbow effect");
-    unsigned long rainbow_start = millis();
-    while (millis() - rainbow_start < 1000) {
-        for(int i=0; i<NEOPIXEL_COUNT; i++) {
-            uint16_t hue = (((i * 65536 / NEOPIXEL_COUNT) + (millis()/10)) % 65536);
-            pixels.setPixelColor(i, pixels.gamma32(pixels.ColorHSV(hue, 255, 255)));
-        }
-        pixels.show();
-        delay(30);
-    }
-    
-    // Turn off all LEDs
     led_fx_off();
-    LOG_INFO("LED FX: Startup test sequence complete");
+    LOG_INFO("LED FX: Startup sequence complete");
 }

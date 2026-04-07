@@ -48,12 +48,13 @@ Ce tableau est basé sur les constantes définies dans `src/config.h`.
 | **8** | Driver Moteur B | BIN1 |
 | **16** | Driver Moteur B | BIN2 |
 | **1** | Servo Direction | (Ackermann, optionnel) |
-| **4** | Servo Tourelle Pan | Horizontal (PINTOURELLE_H) |
-| **2** | Servo Tourelle Tilt | Vertical (PINTOURELLE_V) |
+| **2** | Servo Tourelle Pan | Horizontal (PINTOURELLE_H) |
+| **4** | Servo Tourelle Tilt | Vertical (PINTOURELLE_V) |
 | **6** | Capteur Ultrasons | TRIGGER |
 | **7** | Capteur Ultrasons | ECHO |
 | **5** | Mesure Batterie | VBAT (Entrée analogique) |
 | **14** | Capteur PIR | Signal de sortie |
+| **15** | Commutateur Moteur | PIN_MOTOR_SWITCH (Activation moteur) |
 | **21** | Bouton Interruption | INTERUPTPIN (Bumper) |
 | **48** | LEDs NeoPixel | NEOPIXEL_PIN |
 | **45** | Phare | PIN_PHARE |
