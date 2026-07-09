@@ -54,91 +54,100 @@ void checkSerial() {
 void processCommand(const char* command) {
     // Safety checks - use standard C functions only (no String class)
     if (command == nullptr || command[0] == '\0') return;
-    LOG_DEBUG("Command received: [%s]", command);
     
-    // Copy to local buffer for parsing (strtok_r modifies its input)
-    char cmdBuffer[CMD_BUFFER_SIZE];
-    strncpy(cmdBuffer, command, sizeof(cmdBuffer) - 1);
-    cmdBuffer[sizeof(cmdBuffer) - 1] = '\0';
-    
-    // Parse command format: "TOKEN:value_str" (e.g., "M:100,50" or "E:AVOID")
-    char* strtok_state;
-    char* token = strtok_r(cmdBuffer, ":", &strtok_state);
-    if (token == nullptr) return;
-    
-    char* value_str = strtok_r(NULL, "", &strtok_state);
-    int value = (value_str != nullptr) ? atoi(value_str) : 0;
+    if (xSemaphoreTake(robotMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        LOG_DEBUG("Command received: [%s]", command);
+        
+        // Copy to local buffer for parsing (strtok_r modifies its input)
+        char cmdBuffer[CMD_BUFFER_SIZE];
+        strncpy(cmdBuffer, command, sizeof(cmdBuffer) - 1);
+        cmdBuffer[sizeof(cmdBuffer) - 1] = '\0';
+        
+        // Parse command format: "TOKEN:value_str" (e.g., "M:100,50" or "E:AVOID")
+        char* strtok_state;
+        char* token = strtok_r(cmdBuffer, ":", &strtok_state);
+        if (token == nullptr) {
+            xSemaphoreGive(robotMutex);
+            return;
+        }
+        
+        char* value_str = strtok_r(NULL, "", &strtok_state);
+        int value = (value_str != nullptr) ? atoi(value_str) : 0;
 
-    if (strcasecmp(token, "M") == 0) {
-        // Manual movement command: M:velocity,turn
-        if (value_str != nullptr) {
-            int velocity = 0, turn = 0;
-            sscanf(value_str, "%d,%d", &velocity, &turn);
-            robot.manualTargetVelocity = velocity;
-            robot.manualTargetTurn = turn;
-            if (velocity == 0 && turn == 0) { 
-                changeState(robot, IDLE); 
-            } else { 
-                changeState(robot, MANUAL_COMMAND_MODE); 
+        if (strcasecmp(token, "M") == 0) {
+            // Manual movement command: M:velocity,turn
+            if (value_str != nullptr) {
+                int velocity = 0, turn = 0;
+                sscanf(value_str, "%d,%d", &velocity, &turn);
+                robot.manualTargetVelocity = velocity;
+                robot.manualTargetTurn = turn;
+                if (velocity == 0 && turn == 0) { 
+                    changeState(robot, IDLE); 
+                } else { 
+                    changeState(robot, MANUAL_COMMAND_MODE); 
+                }
             }
-        }
-    } 
-    else if (strcasecmp(token, "E") == 0) {
-        // State change command: E:AVOID|SENTRY|IDLE
-        if (value_str != nullptr) {
-            if (strcasecmp(value_str, "AVOID") == 0) {
-                changeState(robot, SMART_AVOIDANCE);
-            } else if (strcasecmp(value_str, "SENTRY") == 0) {
-                changeState(robot, SENTRY_MODE);
-            } else if (strcasecmp(value_str, "IDLE") == 0) {
-                changeState(robot, IDLE);
+        } 
+        else if (strcasecmp(token, "E") == 0) {
+            // State change command: E:AVOID|SENTRY|IDLE
+            if (value_str != nullptr) {
+                if (strcasecmp(value_str, "AVOID") == 0) {
+                    changeState(robot, SMART_AVOIDANCE);
+                } else if (strcasecmp(value_str, "SENTRY") == 0) {
+                    changeState(robot, SENTRY_MODE);
+                } else if (strcasecmp(value_str, "IDLE") == 0) {
+                    changeState(robot, IDLE);
+                }
             }
-        }
-    } 
-    else if (strcasecmp(token, "lcd_log") == 0) {
-        // LCD logging toggle: lcd_log:0|1
-        robot.lcdLogsEnabled = (value == 1);
-        LOG_INFO("LCD logs set to: %d", robot.lcdLogsEnabled);
-        if (!robot.lcdLogsEnabled && lcdAvailable) {
-            lcd->clear();
-            lcd->setCursor(0, 0);
-            lcd->print("LCD Logs OFF");
-        }
-    } 
-    else if (strcasecmp(token, "sm") == 0) {
-        // Communication mode setting: sm:xbox|serial
-        if (value_str != nullptr) {
-            Preferences preferences;
-            CommunicationMode newMode = robot.activeCommMode;
-            if (strcasecmp(value_str, "xbox") == 0) {
-                newMode = COMM_MODE_XBOX;
-            } else if (strcasecmp(value_str, "serial") == 0) {
-                newMode = COMM_MODE_SERIAL;
+        } 
+        else if (strcasecmp(token, "lcd_log") == 0) {
+            // LCD logging toggle: lcd_log:0|1
+            robot.lcdLogsEnabled = (value == 1);
+            LOG_INFO("LCD logs set to: %d", robot.lcdLogsEnabled);
+            if (!robot.lcdLogsEnabled && lcdAvailable) {
+                if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+                    lcd->clear();
+                    lcd->setCursor(0, 0);
+                    lcd->print("LCD Logs OFF");
+                    xSemaphoreGive(i2cMutex);
+                }
             }
+        } 
+        else if (strcasecmp(token, "sm") == 0) {
+            // Communication mode setting: sm:xbox|serial
+            if (value_str != nullptr) {
+                Preferences preferences;
+                CommunicationMode newMode = robot.activeCommMode;
+                if (strcasecmp(value_str, "xbox") == 0) {
+                    newMode = COMM_MODE_XBOX;
+                } else if (strcasecmp(value_str, "serial") == 0) {
+                    newMode = COMM_MODE_SERIAL;
+                }
 
-            if (newMode != robot.activeCommMode) {
-                robot.activeCommMode = newMode;
-                preferences.begin(NVS_NAMESPACE, false);
-                preferences.putInt(NVS_COMM_MODE_KEY, newMode);
-                preferences.end();
-                LOG_INFO("Comm mode set to %s. Reboot required to apply.", value_str);
-            } else {
-                LOG_INFO("Comm mode is already %s.", value_str);
+                if (newMode != robot.activeCommMode) {
+                    robot.activeCommMode = newMode;
+                    preferences.begin(NVS_NAMESPACE, false);
+                    preferences.putInt(NVS_COMM_MODE_KEY, newMode);
+                    preferences.end();
+                    LOG_INFO("Comm mode set to %s. Reboot required to apply.", value_str);
+                } else {
+                    LOG_INFO("Comm mode is already %s.", value_str);
+                }
             }
         }
+        xSemaphoreGive(robotMutex);
     }
-    // Additional commands can be added here with the same pattern
 }
 
 // --- Telemetry & State ---
-void sendTelemetry(Robot& robot) {
+void sendTelemetry(const TelemetryData& data) {
     JsonDocument doc;
-    doc["state"] = stateToString(robot.currentState);
-    doc["heading"] = robot.cap;
-    doc["distance"] = robot.dusm;
-    doc["distanceLaser"] = robot.distanceLaser;
-    doc["battery"] = readBatteryPercentage();
-    doc["speedTarget"] = robot.targetSpeed;
+    doc["state"] = stateToString(data.currentState);
+    doc["heading"] = data.cap;
+    doc["distance"] = data.dusm;
+    doc["distanceLaser"] = data.distanceLaser;
+    doc["battery"] = data.batteryPercentage;
+    doc["speedTarget"] = data.targetSpeed;
     serializeJson(doc, Serial);
     Serial.println();
 }
@@ -171,18 +180,21 @@ void setLcdText(Robot& robot, const char* text, bool isContinuation) {
     }
 
     // Display first page
-    lcd->clear();
-    char pageBuffer[17]; // 16 chars + null
-    strncpy(pageBuffer, robot.lcdText, 16);
-    pageBuffer[16] = '\0';
-    lcd->setCursor(0, 0);
-    lcd->print(pageBuffer);
-
-    if (len > 16) {
-        strncpy(pageBuffer, robot.lcdText + 16, 16);
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        lcd->clear();
+        char pageBuffer[17]; // 16 chars + null
+        strncpy(pageBuffer, robot.lcdText, 16);
         pageBuffer[16] = '\0';
-        lcd->setCursor(0, 1);
+        lcd->setCursor(0, 0);
         lcd->print(pageBuffer);
+
+        if (len > 16) {
+            strncpy(pageBuffer, robot.lcdText + 16, 16);
+            pageBuffer[16] = '\0';
+            lcd->setCursor(0, 1);
+            lcd->print(pageBuffer);
+        }
+        xSemaphoreGive(i2cMutex);
     }
 }
 
@@ -207,25 +219,28 @@ void handleLcdAnimations(Robot& robot) {
             textLen = strlen(robot.lcdText);
         }
         
-        lcd->clear();
-        char pageBuffer[17]; // 16 chars + null
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            lcd->clear();
+            char pageBuffer[17]; // 16 chars + null
 
-        // Line 1
-        size_t remaining = textLen - offset;
-        size_t line1Len = (remaining > 16) ? 16 : remaining;
-        strncpy(pageBuffer, robot.lcdText + offset, line1Len);
-        pageBuffer[line1Len] = '\0';
-        lcd->setCursor(0, 0);
-        lcd->print(pageBuffer);
-
-        // Line 2
-        if (remaining > 16) {
-            remaining -= 16;
-            size_t line2Len = (remaining > 16) ? 16 : remaining;
-            strncpy(pageBuffer, robot.lcdText + offset + 16, line2Len);
-            pageBuffer[line2Len] = '\0';
-            lcd->setCursor(0, 1);
+            // Line 1
+            size_t remaining = textLen - offset;
+            size_t line1Len = (remaining > 16) ? 16 : remaining;
+            strncpy(pageBuffer, robot.lcdText + offset, line1Len);
+            pageBuffer[line1Len] = '\0';
+            lcd->setCursor(0, 0);
             lcd->print(pageBuffer);
+
+            // Line 2
+            if (remaining > 16) {
+                remaining -= 16;
+                size_t line2Len = (remaining > 16) ? 16 : remaining;
+                strncpy(pageBuffer, robot.lcdText + offset + 16, line2Len);
+                pageBuffer[line2Len] = '\0';
+                lcd->setCursor(0, 1);
+                lcd->print(pageBuffer);
+            }
+            xSemaphoreGive(i2cMutex);
         }
         
         robot.lastLcdPageTime = millis();
@@ -241,7 +256,7 @@ void displayRandomJoke(Robot& robot) {
 }
 
 void displayJokesIfIdle(Robot& robot) {
-    if (robot.currentState != IDLE) return;
+    if (robot.currentState != IDLE || robot.currentState == CALIBRATING_COMPASS) return;
     if (robot.lcdAnimationState != ANIM_IDLE || (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS)) {
         return;
     }
@@ -255,8 +270,8 @@ void displayJokesIfIdle(Robot& robot) {
 
 void updateLcdDisplay(Robot& robot) {
     // This function provides a default information screen.
-    // It should not run if another message or animation is active.
-    if (!robot.lcdLogsEnabled) return;
+    // It should not run if another message or animation is active, or during calibration.
+    if (!robot.lcdLogsEnabled || robot.currentState == CALIBRATING_COMPASS) return;
     if (robot.lcdAnimationState != ANIM_IDLE || 
         (millis() - robot.customMessageSetTime < CUSTOM_MESSAGE_DURATION_MS)) {
         return;
@@ -287,14 +302,17 @@ void updateLcdDisplay(Robot& robot) {
     static char lastLine1[17] = "";
     static char lastLine2[17] = "";
     if (strcmp(line1, lastLine1) != 0 || strcmp(line2, lastLine2) != 0) {
-        lcd->clear(); // Clear only when content changes
-        lcd->setCursor(0, 0);
-        lcd->print(line1);
-        strcpy(lastLine1, line1);
-        
-        lcd->setCursor(0, 1);
-        lcd->print(line2);
-        strcpy(lastLine2, line2);
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            lcd->clear(); // Clear only when content changes
+            lcd->setCursor(0, 0);
+            lcd->print(line1);
+            strcpy(lastLine1, line1);
+            
+            lcd->setCursor(0, 1);
+            lcd->print(line2);
+            strcpy(lastLine2, line2);
+            xSemaphoreGive(i2cMutex);
+        }
     }
 }
 

@@ -263,10 +263,12 @@ struct Robot {
 
 
     // Turret
-
+    int turretPanAngle = 90;
+    int turretTiltAngle = 90;
+    int turretScanDirection = 1;
     unsigned long turretMoveTime;
-
     unsigned long turretScanDelay;
+    unsigned long lastTurretUpdateTime;
 
 
 

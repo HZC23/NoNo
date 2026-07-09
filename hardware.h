@@ -38,6 +38,7 @@ public:
 
 // --- RTOS ---
 extern SemaphoreHandle_t robotMutex;
+extern SemaphoreHandle_t i2cMutex;
 
 // --- BUMPER INTERRUPT ---
 extern volatile bool bumperPressed;
@@ -69,13 +70,14 @@ extern SdFat sd;
 
 // General
 void clearI2CBus();
-void scanI2CBus();
+int scanI2CBus();
 void Arret();
 bool runSelfTest(Robot& robot);
 void updateBatteryStatus(Robot& robot);
 void scanDistances(Robot& robot); // Added
 int findClearestPath(Robot& robot); // Added
 int findWidestPath(Robot& robot); // Added
+int evaluateWidestPath(const Robot& robot); // Added
 
 // Compass
 bool isNVSDataValid();

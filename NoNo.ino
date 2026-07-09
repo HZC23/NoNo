@@ -12,6 +12,10 @@
 // --- Global Robot Instance Definition ---
 Robot robot;
 
+// --- Task Prototypes ---
+void controlTask(void* pvParameters);
+void uiTelemetryTask(void* pvParameters);
+
 // --- SETUP ---
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
@@ -31,11 +35,12 @@ void setup() {
 
     // Initialize I2C and LCD early for debugging the battery check.
     Wire.begin(SDA_PIN, SCL_PIN);
+    Wire.setTimeOut(10); // Set global Wire timeout (10ms) to prevent I2C hangs
     delay(200); // Allow I2C bus to stabilize LONGER before setting clock
     Wire.setClock(400000); // Set I2C clock BEFORE initializing devices
     delay(100); // Additional delay for clock to stabilize
     
-    LOG_INFO("I2C initialized on pins SDA=%d, SCL=%d at 400kHz", SDA_PIN, SCL_PIN);
+    LOG_INFO("I2C initialized on pins SDA=%d, SCL=%d at 400kHz with 10ms timeout", SDA_PIN, SCL_PIN);
     
     delay(50);
     lcd = new DFRobot_RGBLCD1602(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS, &Wire);
@@ -65,13 +70,12 @@ void setup() {
       if (lcdAvailable) {
         float voltage = readBatteryVoltage();
         char buffer[16];
-        sprintf(buffer, "Batt: %.2fV", voltage);
+        snprintf(buffer, sizeof(buffer), "Batt: %.2fV", voltage);
         lcd->clear();
         lcd->print(buffer);
       }
 
-      // Flash red on all LEDs using the new system logic if possible, 
-      // or just manual for this very early boot stage if robot isn't fully ready.
+      // Flash red on all LEDs using the new system logic if possible
       led_fx_set_all( (millis() % 1000 < 500) ? 255 : 0, 0, 0);
       delay(1000);
     }
@@ -86,11 +90,10 @@ void setup() {
     preferences.end();
 
     robotMutex = xSemaphoreCreateMutex();
-    // Wire.begin(SDA_PIN, SCL_PIN); // Already called
+    i2cMutex = xSemaphoreCreateMutex();
     delay(500);
 
     compass = new LSM303();
-    // lcd = new DFRobot_RGBLCD1602(LCD_I2C_ADDR, LCD_LINE_LENGTH, LCD_ROWS); // Already created
     vl53 = new VL53L1X();
 
     if (setupSDCard()) {
@@ -99,7 +102,6 @@ void setup() {
       robot.initialSpeedAvg = robot.speedAvg;
       robot.initialSpeedSlow = robot.speedSlow;
     } else {
-      // This part requires the LCD to be initialized to show the message.
       if (lcdAvailable) {
         setLcdText(robot, "SD Card Error!");
       } else {
@@ -144,9 +146,6 @@ void setup() {
         LOG_WARN("Self-test reported failures - proceeding anyway");
     }
 
-    // The turret servo (tourelle) is attached/detach...
-    // to manage power. The direction servo (Servodirection) is attached manually here
-    // and remains attached for immediate control.
     Servodirection.attach(PINDIRECTION);
     Servodirection.write(robot.servoNeutralDir);
     
@@ -167,169 +166,153 @@ void setup() {
     setLcdText(robot, LCD_STARTUP_MESSAGE_3);
     delay(1000);
     digitalWrite(PIN_PHARE, LOW);
+
+    // Create FreeRTOS Tasks
+    xTaskCreatePinnedToCore(
+        controlTask,
+        "ControlTask",
+        8192,
+        NULL,
+        5, // High priority
+        NULL,
+        1  // Core 1
+    );
+
+    xTaskCreatePinnedToCore(
+        uiTelemetryTask,
+        "UiTelemetryTask",
+        8192,
+        NULL,
+        1, // Low priority
+        NULL,
+        0  // Core 0
+    );
 }
 
-
-// --- MAIN LOOP ---
+// --- MAIN LOOP (IDLE SLEEP) ---
 void loop() {
-  robot.loopStartTime = millis();
-
-  // Handle Xbox controller input (non-blocking, thread-safe if it only writes to robot state handled by next mutex)
-  if (robot.activeCommMode == COMM_MODE_XBOX) {
-    xboxController.processControllers();
-  }
-  
-  // Serial input (non-blocking read)
-  checkSerial();
-
-  // Battery monitoring (non-critical data reads)
-  updateBatteryStatus(robot);
-
-  // CRITICAL SECTION #1: Safety & Power (Bumper, Battery Critical)
-  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
-    if (bumperPressed) {
-      bumperPressed = false;
-      // Do not trigger emergency evasion if in manual mode
-      if (robot.currentState != EMERGENCY_EVASION && robot.currentState != MANUAL_COMMAND_MODE) {
-        trigger_rumble(100, 0, 255); // Strong rumble for bumper press
-        robot.stateBeforeEvasion = robot.currentState;
-        changeState(robot, EMERGENCY_EVASION, AVOID_IDLE);
-      }
-    }
-
-    if (robot.batteryIsCritical) {
-      Arret();
-      LOG_ERROR("Batterie Vide. Robot en pause jusqu'a recharge.");
-      bool criticalMessageDisplayed = false;
-      while (robot.batteryIsCritical) {
-        if (!criticalMessageDisplayed) {
-          setLcdText(robot, "Batterie Vide!");
-          criticalMessageDisplayed = true;
-        }
-        handleLcdAnimations(robot);
-        led_fx_update(robot);
-        updateBatteryStatus(robot);
-        delay(250); 
-      }
-    }
-    xSemaphoreGive(robotMutex);
-  }
-
-  // Sensor updates that don't need the mutex for the hardware part
-  sensor_update_task(robot);
-  
-  // CRITICAL SECTION #2: Sensors, Navigation & Motors
-  if(xSemaphoreTake(robotMutex, (TickType_t) MUTEX_WAIT_TICKS) == pdTRUE) {
-    // 1. Update Turret
-    updateTurret(robot);
-    
-    // 2. Compass update
-    if (robot.currentState != IDLE || (millis() - robot.lastCompassReadTime > COMPASS_READ_INTERVAL_MS)) {
-      float heading = getCalibratedHeading(robot);
-      if (!std::isnan(heading)) {
-        robot.cap = heading;
-      }
-      robot.lastCompassReadTime = millis();
-    }
-    robot.currentPitch = getPitch(robot);
-
-    // 3. Laser distance
-    if (robot.laserInitialized && vl53->dataReady()) {
-      robot.distanceLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
-    }
-
-    // 4. Motor control & Telemetry
-    updateMotorControl(robot);
-
-    if (millis() - robot.lastReportTime > robot.reportInterval) {
-      robot.lastReportTime = millis();
-      sendTelemetry(robot);
-    }
-
-    // 5. Display & FX Updates (using fresh state)
-    displayJokesIfIdle(robot);
-    updateLcdDisplay(robot);
-    handleLcdAnimations(robot);
-    led_fx_update(robot);
-
-    xSemaphoreGive(robotMutex);
-  }
-
-  // Calculate loop timing
-  robot.loopEndTime = millis();
-  unsigned long loopDuration = robot.loopEndTime - robot.loopStartTime;
-  if (loopDuration < LOOP_TARGET_PERIOD_MS) {
-    delay(LOOP_TARGET_PERIOD_MS - loopDuration);
-  }
+  vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
-// #if USB_MSC_ENABLED
-// void activate_msc_mode() {
-//     if (usbMscActive) return;
+// --- High Priority Control & Safety Task (Core 1) ---
+void controlTask(void* pvParameters) {
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz (10ms)
 
-//     LOG_INFO("Activating USB Mass Storage mode.");
-//     setLcdText(robot, "USB Mode Active");
-//     Arret(); // Stop motors
+    while (true) {
+        if (xSemaphoreTake(robotMutex, portMAX_DELAY) == pdTRUE) {
+            // 1. Process controller input if Xbox mode is active
+            if (robot.activeCommMode == COMM_MODE_XBOX) {
+                xboxController.processControllers();
+            }
 
-//     SdFat* sd_card = get_sd_card();
-//     if (!sd_card) {
-//         LOG_ERROR("Could not get SD card filesystem to start MSC.");
-//         setLcdText(robot, "SD Card Error!");
-//         return;
-//     }
+            // 2. Safety override: check hardware bumper from ISR
+            if (bumperPressed) {
+                bumperPressed = false;
+                if (robot.currentState != EMERGENCY_EVASION && robot.currentState != MANUAL_COMMAND_MODE) {
+                    trigger_rumble(100, 0, 255);
+                    robot.stateBeforeEvasion = robot.currentState;
+                    changeState(robot, EMERGENCY_EVASION, AVOID_IDLE);
+                }
+            }
 
-//     USBMSC.setID("Nono", "SD Card", "1.0");
-    
-//     // Set callbacks
-//     USBMSC.setReadWriteCallback(msc_read_cb, msc_write_cb, msc_flush_cb);
-//     USBMSC.setReadyCallback(msc_ready_cb);
+            // 3. Safety override: critical battery check
+            if (robot.batteryIsCritical) {
+                Arret();
+                // Skip sensor reading and motor regulation to stay parked safely
+            } else {
+                // 4. Update non-blocking sensors (ultrasonic)
+                sensor_update_task(robot);
 
-//     // Set disk size. sd_card->card() returns a pointer to the SdCard object.
-//     // sectorCount() returns the number of sectors on the card.
-//     // The block size is almost always 512 bytes for SD cards.
-//     uint32_t block_count = sd_card->card()->sectorCount();
-//     USBMSC.setCapacity(block_count, 512);
-//     USBMSC.setUnitReady(true);
+                // 5. Update Turret stabilization/movements
+                updateTurret(robot);
 
-//     if (USBMSC.begin()) {
-//         USBDevice.begin();
-//         usbMscActive = true;
-//         LOG_INFO("USB MSC Started. Robot will be unresponsive until reset.");
-//     } else {
-//         LOG_ERROR("Failed to begin USB MSC.");
-//         setLcdText(robot, "USB MSC Error!");
-//     }
-// }
+                // 6. Update I2C sensors with dedicated mutex & short timeouts
+                if (robot.currentState != IDLE || (millis() - robot.lastCompassReadTime > COMPASS_READ_INTERVAL_MS)) {
+                    float heading = getCalibratedHeading(robot);
+                    if (!std::isnan(heading)) {
+                        robot.cap = heading;
+                    }
+                    robot.lastCompassReadTime = millis();
+                }
+                robot.currentPitch = getPitch(robot);
 
-// // MSC callback implementations
-// int32_t msc_read_cb(uint32_t lba, void *buffer, uint32_t bufsize) {
-//     SdFat* sd_card = get_sd_card();
-//     if (!sd_card) return -1;
+                if (robot.laserInitialized) {
+                    bool ready = false;
+                    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+                        ready = vl53->dataReady();
+                        xSemaphoreGive(i2cMutex);
+                    }
+                    if (ready) {
+                        int dist = -1;
+                        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+                            dist = vl53->readRangeContinuousMillimeters();
+                            if (vl53->timeoutOccurred()) {
+                                LOG_WARN("Laser read timeout");
+                            }
+                            xSemaphoreGive(i2cMutex);
+                        }
+                        if (dist > 0) {
+                            robot.distanceLaser = dist / MM_PER_CM;
+                        }
+                    }
+                }
 
-//     // sd_card->card() returns a pointer to the SdCard object, which has low-level read/write functions.
-//     // readBlocks takes LBA, buffer, and number of blocks. bufsize is in bytes.
-//     return sd_card->card()->readBlocks(lba, (uint8_t *)buffer, bufsize / 512) ? (int32_t)bufsize : -1;
-// }
+                // 7. Motor control regulation & state machine step
+                updateMotorControl(robot);
+            }
 
-// int32_t msc_write_cb(uint32_t lba, uint8_t *buffer, uint32_t bufsize) {
-//     SdFat* sd_card = get_sd_card();
-//     if (!sd_card) return -1;
-    
-//     // writeBlocks takes LBA, buffer, and number of blocks.
-//     return sd_card->card()->writeBlocks(lba, buffer, bufsize / 512) ? (int32_t)bufsize : -1;
-// }
+            xSemaphoreGive(robotMutex);
+        }
 
-// void msc_flush_cb(void) {
-//     SdFat* sd_card = get_sd_card();
-//     if (sd_card) {
-//         // syncBlocks() ensures all cached data is written to the card.
-//         sd_card->card()->syncBlocks();
-//     }
-// }
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
 
-// bool msc_ready_cb(void) {
-//     // The device is ready if we have a valid pointer to the SD card object.
-//     return (get_sd_card() != nullptr);
-// }
-// #endif
+// --- Low Priority UI & Telemetry Task (Core 0) ---
+void uiTelemetryTask(void* pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(100); // 10Hz (100ms)
 
+    while (true) {
+        // 1. Check serial input (takes robotMutex internally during parsing)
+        checkSerial();
+
+        // 2. Battery monitoring & LCD updates
+        if (xSemaphoreTake(robotMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            updateBatteryStatus(robot);
+
+            // Check if we need to send telemetry (every 2 seconds)
+            bool timeToReport = (millis() - robot.lastReportTime > robot.reportInterval);
+            TelemetryData tData;
+            if (timeToReport) {
+                robot.lastReportTime = millis();
+                tData.currentState = robot.currentState;
+                tData.cap = robot.cap;
+                tData.dusm = robot.dusm;
+                tData.distanceLaser = robot.distanceLaser;
+                tData.batteryPercentage = readBatteryPercentage();
+                tData.targetSpeed = robot.targetSpeed;
+            }
+
+            if (robot.batteryIsCritical) {
+                setLcdText(robot, "Batterie Vide!");
+            } else {
+                displayJokesIfIdle(robot);
+                updateLcdDisplay(robot);
+            }
+
+            handleLcdAnimations(robot);
+            led_fx_update(robot);
+
+            xSemaphoreGive(robotMutex);
+
+            // 3. Print Telemetry (executed outside robotMutex to avoid blocking high-priority tasks)
+            if (timeToReport) {
+                sendTelemetry(tData);
+            }
+        }
+
+        // Nourrir le watchdog sur le Cœur 0
+        vTaskDelay(xFrequency);
+    }
+}

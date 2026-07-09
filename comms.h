@@ -18,7 +18,15 @@ void checkSerial();
 void processCommand(const char* command);
 
 // Telemetry
-void sendTelemetry(Robot& robot);
+struct TelemetryData {
+    RobotState currentState;
+    int cap;
+    int dusm;
+    int distanceLaser;
+    int batteryPercentage;
+    int targetSpeed;
+};
+void sendTelemetry(const TelemetryData& data);
 void sendPeriodicData(Robot& robot);
 
 // Display

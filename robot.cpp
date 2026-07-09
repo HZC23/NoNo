@@ -24,6 +24,10 @@ void initializeRobot(Robot& robot) {
     robot.minDistForValidPath = MIN_DIST_FOR_VALID_PATH;
     robot.turretMoveTime = TURRET_MOVE_TIME_MS;
     robot.turretScanDelay = SCAN_DELAY_MS;
+    robot.turretPanAngle = 90;
+    robot.turretTiltAngle = 90;
+    robot.turretScanDirection = 1;
+    robot.lastTurretUpdateTime = 0;
     robot.anglePenaltyFactor = ANGLE_PENALTY_FACTOR;
     robot.seuilVide = SEUIL_VIDE;
     robot.laserTimingBudget = VL53L1X_TIMING_BUDGET_US;

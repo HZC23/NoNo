@@ -141,7 +141,8 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
 
     case AVOID_QUICK_SCAN_LEFT:
       if (!robot.actionStarted) {
-        tourelle.write(90 - QUICK_SCAN_ANGLE, robot.servoNeutralTurret);
+        robot.turretPanAngle = 90 - QUICK_SCAN_ANGLE;
+        tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -164,7 +165,8 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
 
     case AVOID_QUICK_SCAN_RIGHT:
       if (!robot.actionStarted) {
-        tourelle.write(90 + QUICK_SCAN_ANGLE, robot.servoNeutralTurret);
+        robot.turretPanAngle = 90 + QUICK_SCAN_ANGLE;
+        tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
         robot.lastActionTime = millis();
         robot.actionStarted = true;
       }
@@ -208,11 +210,61 @@ void handleSmartAvoidanceState(Robot& robot, int& targetA, int& targetB) {
       break;
 
     case AVOID_PERFORM_FULL_SCAN:
-      robot.bestAvoidAngle = findWidestPath(robot);
-      robot.obstacleAvoidanceState = AVOID_EVALUATE_FULL_SCAN;
+      if (!robot.actionStarted) {
+        robot.currentScanAngleH = SCAN_H_START_ANGLE;
+        robot.actionStarted = true;
+        robot.lastScanTime = millis();
+        // Move turret to start angle
+        robot.turretPanAngle = robot.currentScanAngleH;
+        tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
+        LOG_DEBUG("AVOID: Full scan started at angle %d", robot.currentScanAngleH);
+      } else {
+        // Wait for turret to settle
+        unsigned long scanDelay = robot.turretScanDelay > 0 ? robot.turretScanDelay : 30;
+        if (millis() - robot.lastScanTime > scanDelay) {
+          // Read distance
+          int distLaser = robot.maxUltrasonicDistance; 
+          if (robot.laserInitialized) {
+            bool ready = false;
+            if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+              ready = vl53->dataReady();
+              xSemaphoreGive(i2cMutex);
+            }
+            if (ready) {
+              if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+                distLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
+                if (vl53->timeoutOccurred() || distLaser <= 0) {
+                  distLaser = robot.maxUltrasonicDistance;
+                }
+                xSemaphoreGive(i2cMutex);
+              }
+            }
+          }
+          robot.scanDistances[robot.currentScanAngleH] = distLaser;
+          LOG_DEBUG("AVOID: Angle %d = %d cm", robot.currentScanAngleH, distLaser);
+
+          // Move to next angle
+          robot.currentScanAngleH += SCAN_H_STEP;
+          if (robot.currentScanAngleH <= SCAN_H_END_ANGLE) {
+            robot.turretPanAngle = robot.currentScanAngleH;
+            tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
+            robot.lastScanTime = millis();
+          } else {
+            // Full scan complete! Move to evaluation
+            robot.actionStarted = false;
+            robot.obstacleAvoidanceState = AVOID_EVALUATE_FULL_SCAN;
+            
+            // Center the turret
+            robot.turretPanAngle = 90;
+            tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
+          }
+        }
+      }
       break;
 
     case AVOID_EVALUATE_FULL_SCAN:
+      // Use evaluateWidestPath instead of findWidestPath
+      robot.bestAvoidAngle = evaluateWidestPath(robot);
       if (robot.bestAvoidAngle != -1) {
         LOG_DEBUG("AVOID: Widest path found at angle %d.", robot.bestAvoidAngle);
         float angleOffset = robot.bestAvoidAngle - 90.0;
@@ -323,6 +375,10 @@ void updateMotorControl(Robot& robot) {
     case OBSTACLE_AVOIDANCE: 
     case SMART_AVOIDANCE: 
       handleSmartAvoidanceState(robot, targetA, targetB); 
+      break;
+    case CALIBRATING_COMPASS:
+      calibrateCompass(robot);
+      targetA = 0; targetB = 0;
       break;
     // ... other cases
     default: targetA = 0; targetB = 0; break;

@@ -25,6 +25,7 @@ bool lcdAvailable = false;
 
 // --- RTOS & INTERRUPT ---
 SemaphoreHandle_t robotMutex = NULL;
+SemaphoreHandle_t i2cMutex = NULL;
 volatile bool bumperPressed = false;
 volatile uint32_t lastBumperPressTime = 0;
 
@@ -238,25 +239,34 @@ void updateBatteryStatus(Robot& robot) {
 
 // --- Pathfinding functions ---
 
-// NEW: Centralized scanning function
+// NEW: Centralized scanning function (Non-blocking compatible, but deprecated)
 void scanDistances(Robot& robot) {
     for (int angle = SCAN_H_START_ANGLE; angle <= SCAN_H_END_ANGLE; angle += SCAN_H_STEP) {
-        tourelle.write(angle, robot.servoNeutralTurret);
-        delay(robot.turretScanDelay > 0 ? robot.turretScanDelay : 30); // Use a default delay if not set
+        robot.turretPanAngle = angle;
+        tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
+        vTaskDelay(pdMS_TO_TICKS(robot.turretScanDelay > 0 ? robot.turretScanDelay : 30)); 
 
-        int distLaser = robot.maxUltrasonicDistance; // Default to max distance
-        if (robot.laserInitialized && vl53->dataReady()) {
-            distLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
-            if (vl53->timeoutOccurred() || distLaser <= 0) {
-                distLaser = robot.maxUltrasonicDistance;
+        int distLaser = robot.maxUltrasonicDistance; 
+        if (robot.laserInitialized) {
+            bool ready = false;
+            if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+                ready = vl53->dataReady();
+                xSemaphoreGive(i2cMutex);
             }
-        } else if (robot.laserInitialized) {
-            // Data not ready, use safe default instead of potentially uninitialized value
-            distLaser = robot.maxUltrasonicDistance;
+            if (ready) {
+                if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+                    distLaser = vl53->readRangeContinuousMillimeters() / MM_PER_CM;
+                    if (vl53->timeoutOccurred() || distLaser <= 0) {
+                        distLaser = robot.maxUltrasonicDistance;
+                    }
+                    xSemaphoreGive(i2cMutex);
+                }
+            }
         }
         robot.scanDistances[angle] = distLaser;
     }
-    tourelle.write(robot.servoNeutralTurret, robot.servoNeutralTurret);
+    robot.turretPanAngle = 90;
+    tourelle.write(robot.turretPanAngle, robot.turretTiltAngle);
 }
 
 // REFACTORED to use scanDistances
@@ -312,6 +322,42 @@ int findWidestPath(Robot& robot) {
     if (best_start_angle != -1) {
         int middleAngle = best_start_angle + (max_len / 2) * SCAN_H_STEP;
         LOG_DEBUG("findWidestPath: found path at %d deg", middleAngle);
+        return middleAngle;
+    }
+
+    return -1;
+}
+
+// NEW: Pure mathematical helper (No I/O)
+int evaluateWidestPath(const Robot& robot) {
+    int best_start_angle = -1;
+    int max_len = 0;
+    int current_start_angle = -1;
+    int current_len = 0;
+
+    for (int angle = SCAN_H_START_ANGLE; angle <= SCAN_H_END_ANGLE; angle += SCAN_H_STEP) {
+        if (robot.scanDistances[angle] > robot.minDistForValidPath) {
+            if (current_start_angle == -1) {
+                current_start_angle = angle;
+            }
+            current_len++;
+        } else {
+            if (current_len > max_len) {
+                max_len = current_len;
+                best_start_angle = current_start_angle;
+            }
+            current_start_angle = -1;
+            current_len = 0;
+        }
+    }
+    if (current_len > max_len) {
+        max_len = current_len;
+        best_start_angle = current_start_angle;
+    }
+
+    if (best_start_angle != -1) {
+        int middleAngle = best_start_angle + (max_len / 2) * SCAN_H_STEP;
+        LOG_DEBUG("evaluateWidestPath: found path at %d deg", middleAngle);
         return middleAngle;
     }
 

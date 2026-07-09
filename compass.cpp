@@ -84,7 +84,17 @@ float calculateHeading(const LSM303& compass) {
 float getCalibratedHeading(Robot& robot) {
     if (!robot.compassInitialized) return std::nanf("");
     
-    compass->read();
+    bool success = false;
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        compass->read();
+        success = true;
+        xSemaphoreGive(i2cMutex);
+    }
+    
+    if (!success) {
+        return robot.cap; // Fallback to last known heading if I2C is busy
+    }
+    
     if (compass->m.x == 0 && compass->m.y == 0 && compass->m.z == 0) {
         LOG_WARN("Valeurs compas nulles dans getCalibratedHeading ()");
         return robot.cap; // return last known heading
@@ -124,6 +134,7 @@ float getCalibratedHeading(Robot& robot) {
 void calibrateCompass(Robot& robot) {
     static unsigned long startTime = 0;
     static bool calibrationStarted = false;
+    static unsigned long lastLcdUpdateTime = 0;
 
     if (!calibrationStarted) {
         LOG_INFO("=== CALIBRATION DU COMPAS (360 DEGRES) ===");
@@ -131,10 +142,23 @@ void calibrateCompass(Robot& robot) {
         robot.magMax = {COMPASS_MIN_INT16, COMPASS_MIN_INT16, COMPASS_MIN_INT16};
         startTime = millis();
         calibrationStarted = true;
-        setLcdText(robot, "Calib 360...");
+        setLcdText(robot, "Tournez le robot");
+        lastLcdUpdateTime = millis();
+        trigger_rumble(50, 0, 150); // Start feedback
     }
 
     unsigned long elapsed = millis() - startTime;
+
+    // Update LCD every 500ms with progress
+    if (lcdAvailable && millis() - lastLcdUpdateTime > 500 && elapsed < COMPASS_CALIBRATION_DURATION_MS) {
+        int progress = (elapsed * 100) / COMPASS_CALIBRATION_DURATION_MS;
+        char buffer[17];
+        snprintf(buffer, sizeof(buffer), "Calib: %d%%", progress);
+        
+        lcd->setCursor(0, 1);
+        lcd->print(buffer);
+        lastLcdUpdateTime = millis();
+    }
 
     if (elapsed < COMPASS_CALIBRATION_DURATION_MS) {
         compass->read();
@@ -144,39 +168,50 @@ void calibrateCompass(Robot& robot) {
         robot.magMax.x = max(robot.magMax.x, compass->m.x);
         robot.magMax.y = max(robot.magMax.y, compass->m.y);
         robot.magMax.z = max(robot.magMax.z, compass->m.z);
+    } else if (elapsed > COMPASS_CALIBRATION_TIMEOUT_MS) {
+        // Safety timeout to prevent getting stuck in this state forever
+        LOG_ERROR("=== CALIBRATION TIMEOUT ===");
+        setLcdText(robot, "Calib. TIMEOUT");
+        calibrationStarted = false;
+        trigger_rumble(100, 200, 0); // Error feedback
+        changeState(robot, IDLE);
     } else {
         LOG_INFO("=== CALIBRATION TERMINEE ===");
         // Validate calibration by checking the range of magnetometer values on both axes
         int rangeX = robot.magMax.x - robot.magMin.x;
         int rangeY = robot.magMax.y - robot.magMin.y;
         
+        // Note: Threshold is now checked against a more realistic value (e.g., 500 units for LSM303)
+        // We use a constant from config.h but let's see its value
         if (rangeX >= COMPASS_CALIBRATION_VALIDATION_THRESHOLD && rangeY >= COMPASS_CALIBRATION_VALIDATION_THRESHOLD) {
             robot.compassCalibrated = true;
             LOG_INFO("-> Calibration REUSSIE. RangeX=%d, RangeY=%d", rangeX, rangeY);
             setLcdText(robot, "Calib. OK");
+            trigger_rumble(50, 0, 255); // Success feedback
         } else {
             robot.compassCalibrated = false;
             LOG_WARN("-> Calibration DEFAILLANTE. RangeX=%d (need >=%d), RangeY=%d (need >=%d)", 
                      rangeX, COMPASS_CALIBRATION_VALIDATION_THRESHOLD, 
                      rangeY, COMPASS_CALIBRATION_VALIDATION_THRESHOLD);
-            setLcdText(robot, "Calib. ECHEC");
+            setLcdText(robot, "Calib. TROP COURT");
+            trigger_rumble(100, 200, 0); // Failure feedback
         }
         saveCompassCalibration(robot);
         calibrationStarted = false;
         changeState(robot, IDLE); // Return to IDLE state
-    } else if (elapsed > COMPASS_CALIBRATION_TIMEOUT_MS) {
-        // Safety timeout to prevent getting stuck in this state forever
-        LOG_ERROR("=== CALIBRATION TIMEOUT ===");
-        setLcdText(robot, "Calib. TIMEOUT");
-        calibrationStarted = false;
-        changeState(robot, IDLE);
     }
 }
 
 float getPitch(Robot& robot) {
-    if (!robot.compassInitialized) return 0.0f;
-    compass->readAcc();
-    return atan2(compass->a.y, -compass->a.z) * 180.0 / PI;
+    if (!robot.compassInitialized) return robot.currentPitch;
+    
+    float pitch = robot.currentPitch;
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        compass->readAcc();
+        pitch = atan2(compass->a.y, -compass->a.z) * 180.0 / PI;
+        xSemaphoreGive(i2cMutex);
+    }
+    return pitch;
 }
 
 bool detectImpactOrStall(Robot& robot) {
@@ -192,9 +227,21 @@ bool detectImpactOrStall(Robot& robot) {
         return false;
     }
     
-    compass->readAcc();
-    float currentX = compass->a.x;
-    float currentY = compass->a.y;
+    float currentX = 0;
+    float currentY = 0;
+    bool success = false;
+    
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        compass->readAcc();
+        currentX = compass->a.x;
+        currentY = compass->a.y;
+        success = true;
+        xSemaphoreGive(i2cMutex);
+    }
+    
+    if (!success) {
+        return false; // Skip checking impact this iteration if I2C is busy
+    }
     
     // Initialize on first valid read to avoid startup false positives
     if (!accelInitialized) {
